@@ -42,12 +42,19 @@ program test_icetemp
     real(prec) :: t_start, t_end, dt, time  
     integer    :: n, ntot 
 
+    ! Output 
+    character(len=512) :: file1D 
+    real(prec)         :: dt_out 
+
     t_start = 0.0     ! [yr]
     t_end   = 1000.0  ! [yr]
     dt      = 5.0     ! [yr]
 
+    file1D  = "test.nc" 
+    dt_out  = dt      ! [yr] 
+
     ! Calculate number of time steps to iterate and initialize time  
-    ntot = 1 ! (t_end-t_start)/dt 
+    ntot = 5 ! (t_end-t_start)/dt 
     time = t_start 
 
     ! Initialize icesheet object 
@@ -56,14 +63,24 @@ program test_icetemp
     ! Prescribe initial eismint conditions for testing 
     call init_eismint_summit(ice1)
 
+    ! Initialize output file and write intial conditions 
+    call write_init(ice1,filename=file1D,time_init=time)
+    call write_step(ice1,filename=file1D,time=time)
+
     do n = 1, ntot 
 
         ! Get current time 
         time = t_start + n*dt 
 
-        call calc_icetemp_grisli_column(ice1%ibase,ice1%T_ice,ice1%T_rock,ice1%T_pmp, &
-                                        ice1%cp,ice1%kt,ice1%uz,ice1%Q_strn,ice1%advecxy,ice1%Q_b, &
-                                        ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%is_float,dt)
+!         call calc_icetemp_grisli_column(ice1%ibase,ice1%T_ice,ice1%T_rock,ice1%T_pmp, &
+!                                         ice1%cp,ice1%kt,ice1%uz,ice1%Q_strn,ice1%advecxy,ice1%Q_b, &
+!                                         ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%is_float,dt)
+
+        if (mod(time,dt_out)==0) then 
+            call write_step(ice1,filename=file1D,time=time)
+        end if 
+
+        write(*,"(a,f14.4)") "time = ", time
 
     end do 
 
@@ -141,5 +158,80 @@ contains
 
     end subroutine icesheet_allocate 
 
+    subroutine write_init(ice,filename,time_init)
+
+        implicit none 
+
+        type(icesheet),   intent(IN) :: ice 
+        character(len=*), intent(IN) :: filename 
+        real(prec),       intent(IN) :: time_init
+
+        ! Local variables 
+        integer    :: nzr 
+        real(prec) :: dzr 
+
+        nzr = size(ice%T_rock,1)
+
+        ! Initialize netcdf file and dimensions
+        call nc_create(filename)
+        call nc_write_dim(filename,"s",     x=ice%sigma, units="1")
+        call nc_write_dim(filename,"zeta",  x=ice%zeta, units="1")
+        call nc_write_dim(filename,"sr",    x=0,nx=nzr,dx=1,units="1")
+        call nc_write_dim(filename,"time",  x=time_init,dx=1.0_prec,nx=1,units="years",unlimited=.TRUE.)
+
+        return
+
+    end subroutine write_init 
     
+    subroutine write_step(ice,filename,time)
+
+        implicit none 
+        
+        type(icesheet),   intent(IN) :: ice
+        character(len=*), intent(IN) :: filename
+        real(prec),       intent(IN) :: time
+
+        ! Local variables
+        integer    :: ncid, n
+        real(prec) :: time_prev 
+
+        character(len=12), parameter :: vert_dim = "zeta"    ! zeta or sigma 
+
+        ! Open the file for writing
+        call nc_open(filename,ncid,writable=.TRUE.)
+
+        ! Determine current writing time step 
+        n = nc_size(filename,"time",ncid)
+        call nc_read(filename,"time",time_prev,start=[n],count=[1],ncid=ncid) 
+        if (abs(time-time_prev).gt.1e-5) n = n+1 
+
+        ! Update the time step
+        call nc_write(filename,"time",time,dim1="time",start=[n],count=[1],ncid=ncid)
+
+        ! Update variables (vectors) 
+        call nc_write(filename,"T_ice",ice%T_ice,units="degC",long_name="Ice temperature",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"T_rock",ice%T_rock,units="degC",long_name="Bedrock temperature",dim1="sr",dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"T_pmp",ice%T_pmp,units="",long_name="Ice pressure melting point",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"cp",ice%cp,units="",long_name="Ice heat capacity",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"kt",ice%kt,units="",long_name="Ice thermal conductivity",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"uz",ice%uz,units="m a**-1",long_name="Ice vertical velocity",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"Q_strn",ice%Q_strn,units="",long_name="Ice strain heating",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"advecxy",ice%advecxy,units="",long_name="Ice horizontal advection",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        
+        ! Update variables (points) 
+        call nc_write(filename,"ibase",ice%ibase,units="",long_name="Basal state",dim1="time",start=[n],ncid=ncid)
+        call nc_write(filename,"Q_b",ice%Q_b,units="",long_name="Basal heating",dim1="time",start=[n],ncid=ncid)
+        call nc_write(filename,"Q_geo",ice%Q_geo,units="mW m**-2",long_name="Geothermal heat flux",dim1="time",start=[n],ncid=ncid)
+        call nc_write(filename,"T_srf",ice%T_srf,units="degC",long_name="Surface temperature",dim1="time",start=[n],ncid=ncid)
+        call nc_write(filename,"H_ice",ice%H_ice,units="m",long_name="Ice thickness",dim1="time",start=[n],ncid=ncid)
+        call nc_write(filename,"H_w",ice%H_w,units="m",long_name="Basal water thickness",dim1="time",start=[n],ncid=ncid)
+        call nc_write(filename,"is_float",ice%is_float,units="",long_name="Floating flag",dim1="time",start=[n],ncid=ncid)
+        
+        ! Close the netcdf file
+        call nc_close(ncid)
+
+        return 
+
+    end subroutine write_step
+
 end program test_icetemp 
