@@ -15,6 +15,8 @@ program test_icetemp
         real(prec) :: H_ice     ! [m] Ice thickness 
         real(prec) :: H_w       ! [m] Water present at the ice base 
         real(prec) :: T_srf     ! [degC] Ice surface temperature 
+        real(prec) :: smb       ! [m a**-1] Surface mass balance
+        real(prec) :: bmb       ! [m a**-1] Basal mass balance
         real(prec) :: Q_geo     ! [mW m-2] Geothermal heat flux 
         real(prec) :: Q_b       ! [] Basal heat production 
         logical    :: is_float  ! [-] Floating flag 
@@ -93,10 +95,40 @@ contains
         type(icesheet), intent(INOUT) :: ice
 
         ! Local variables 
-        integer :: nz, nzr 
+        integer :: k, nz, nzr 
 
         nz  = size(ice%T_ice)
         nzr = size(ice%T_rock) 
+
+        ice%T_srf    = 239.0-T0    ! [degC]
+        ice%smb      = 0.3         ! [m/a]
+        ice%bmb      = 0.0         ! [m/a]
+        ice%Q_geo    = 42.0        ! [mW/m2]
+
+        ice%H_ice    = 2997.0      ! [m] Summit thickness
+        ice%H_w      = 0.0         ! [m] No basal water
+        ice%Q_b      = 0.0         ! [] No basal frictional heating 
+        ice%Q_strn   = 0.0         ! [] No internal strain heating 
+        ice%advecxy  = 0.0         ! [] No horizontal advection 
+
+        ice%is_float = .FALSE.     ! Grounded point 
+        ice%ibase    = 1           ! Frozen 
+
+        ! Calculate pressure melting point 
+        ice%T_pmp = calc_T_pmp(ice%sigma*ice%H_ice,T0) 
+
+        ! Define surface temperature of ice based on simple atmospheric correction below zero
+        ice%T_ice(nz) = ice%T_srf 
+
+        ! Basal temperature is 10 deg below freezing point 
+        ice%T_ice(1) = (calc_T_pmp(ice%H_ice,T0)-T0) - 10.0 
+
+        ! Intermediate layers are linearly interpolated 
+        do k = 2, nz-1 
+            ice%T_ice(k) = ice%T_ice(1)+ice%sigma(k)*(ice%T_ice(nz)-ice%T_ice(1))
+        end do 
+
+        ice%T_rock = ice%T_ice(1) 
 
         return 
 
@@ -211,7 +243,7 @@ contains
 
         ! Update the time step
         call nc_write(filename,"time",time,dim1="time",start=[n],count=[1],ncid=ncid)
-        
+
         ! Update variables (vectors) 
         call nc_write(filename,"T_ice",  ice%T_ice,  units="degC",   long_name="Ice temperature",         dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
         call nc_write(filename,"T_rock", ice%T_rock, units="degC",   long_name="Bedrock temperature",     dim1="sr",    dim2="time",start=[1,n],ncid=ncid)
