@@ -64,7 +64,8 @@ $(objdir)/icetemp_grisli.o : $(srcdir)/icetemp_grisli.f90 $(objdir)/defs.o \
 ##
 ###############################################
 
-test_icetemp : $(objdir)/ncio.o $(objdir)/defs.o $(objdir)/thermodynamics.o $(objdir)/icetemp_grisli.o
+test_icetemp : $(objdir)/ncio.o $(objdir)/defs.o $(objdir)/solver_tridiagonal.o \
+				$(objdir)/thermodynamics.o $(objdir)/icetemp_grisli.o
 		$(FC) $(DLAGS) $(FFLAGS) $(INC_COORD) $(INC_LIS) -o $(bindir)/test_icetemp.x test_icetemp.f90 \
 			$(LFLAGS) $^
 		@echo " "

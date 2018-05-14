@@ -2,7 +2,7 @@ module icetemp_grisli
     ! Wrapping the original grisli icetemp solution for yelmo 
 
     use defs, only : prec, pi, g, sec_year, T0, rho_ice, rho_sw, rho_w
-    use solver_tridiagonal, only : solve_tridiag
+    use solver_tridiagonal, only : tridiag 
     use thermodynamics 
 
     implicit none
@@ -11,140 +11,12 @@ module icetemp_grisli
     logical,    parameter :: conductive_bedrock = .TRUE. 
     
     private
-    public :: icetemp_grisli_wrap
+    public :: calc_icetemp_grisli_column
 
 contains 
     
-    subroutine icetemp_grisli_wrap(T_ice,bmb,f_grnd, H_ice, T_srf, ux, uy, uz, dzsdx, dzsdy, dzsrfdt, &
-                                      dHicedx, dHicedy, dHicedt, cp, kt, Q_strn, Q_b, T_pmp, mb_net, Q_geo, sigma, dx, dt)
-        ! Calculate input variables to column temperature solver,
-        ! and reverse index order (1:base,nz:surface) => (1:surface,nz:base)
-
-        implicit none 
-
-        real(prec), intent(OUT) :: T_ice(:,:,:)                           ! The ice temperature [K]
-        real(prec), intent(OUT) :: bmb(:,:)                               ! The basal mass balance (negative melt) at the bottom at time time + dt if T_pmp is reached [J m^-2 y^-1]
-        real(prec), intent(IN)  :: f_grnd(:,:)                            ! Grounded fraction 
-        real(prec), intent(IN)  :: H_ice(:,:)                             ! The ice thickness [m]
-        real(prec), intent(IN)  :: T_srf(:,:)                             ! The ice surface temperature at time step time + dt [K]
-        real(prec), intent(IN)  :: ux(:,:,:)                              ! The 3D velocity field in the x-direction [m y^-1]
-        real(prec), intent(IN)  :: uy(:,:,:)                              ! The 3D velocity field in the y-direction [m y^-1]
-        real(prec), intent(IN)  :: uz(:,:,:)                              ! The 3D velocity field in the zeta-direction [m y^-1]
-        real(prec), intent(IN)  :: dzsdx(:,:)                             ! The surface gradient in the x-direction [m m^-1]
-        real(prec), intent(IN)  :: dzsdy(:,:)                             ! The surface gradient in the y-direction [m m^-1]
-        real(prec), intent(IN)  :: dzsrfdt(:,:)                           ! The surface gradient in time [m a-1]
-        real(prec), intent(IN)  :: dHicedx(:,:)                           ! The ice thickness gradient in the x-direction [m m^-1]
-        real(prec), intent(IN)  :: dHicedy(:,:)                           ! The ice thickness gradient in the y-direction [m m^-1]
-        real(prec), intent(IN)  :: dHicedt(:,:)                           ! The ice thickness gradient in time [m a-1]
-        real(prec), intent(IN)  :: cp(:,:,:)                              ! The specific heat capacity of ice at each x,y,zeta point [J kg^-1 K^-1]
-        real(prec), intent(IN)  :: kt(:,:,:)                              ! The conductivity of ice at each x,y,zeta point [J m^-1 K^-1 y^-1]
-        real(prec), intent(IN)  :: Q_strn(:,:,:)                          ! Internal strain heating [K a-1]
-        real(prec), intent(IN)  :: Q_b(:,:)                               ! The heat flux at the ice bottom [J m^-2 y^-1]
-        real(prec), intent(IN)  :: T_pmp(:,:,:)                           ! The pressure melting point temperature for each depth and for all grid points [K]
-        real(prec), intent(IN)  :: mb_net(:,:)                            ! Net basal and surface mass balance [meter ice equivalent per year]
-        real(prec), intent(IN)  :: Q_geo(:,:)                             ! Geothermal heat flux [1e-3 J m^-2 s^-1]
-        real(prec), intent(IN)  :: sigma(:)                               ! Vertical height axis (0:1) 
-        real(prec), intent(IN)  :: dx 
-        real(prec), intent(IN)  :: dt 
-
-        ! Column variables for interfacing with heiko's routine 
-        real(prec), allocatable  :: rev_Ti(:)                             ! The ice temperature at the previous time step time [K]
-        real(prec), allocatable  :: rev_U(:)                              ! The 3D velocity field in the x-direction [m y^-1]
-        real(prec), allocatable  :: rev_V(:)                              ! The 3D velocity field in the y-direction [m y^-1]
-        real(prec), allocatable  :: rev_W(:)                              ! The 3D velocity field in the zeta-direction [m y^-1]
-        real(prec), allocatable  :: rev_Q_strn(:)                         ! Reversed strain heating field [K y^-1]
-        real(prec), allocatable  :: rev_dV_dzeta(:)                       ! The zeta-derivative of the 3D velocity field in the y-direction [y^-1]
-        real(prec), allocatable  :: rev_Cpi(:)                            ! The specific heat capacity of ice at each x,y,zeta point [J kg^-1 K^-1]
-        real(prec), allocatable  :: rev_Ki(:)                             ! The conductivity of ice at each x,y,zeta point [J m^-1 K^-1 y^-1]
-        real(prec), allocatable  :: rev_Ti_pmp(:)                         ! The pressure melting point temperature for each depth and for all grid points [K]
-        real(prec), allocatable  :: rev_advecxy(:)                        ! The xy horizontal advection of temperature contribution
-        real(prec), allocatable  :: advecxy(:)                            ! The xy horizontal advection of temperature contribution
-        real(prec), allocatable  :: zeta(:)                               ! The xy horizontal advection of temperature contribution
-        
-        ! Output variables:
-        real(prec), allocatable  :: rev_Ti_new(:)                          ! The new ice temperature at time time + dt [K]. The surface temperature T(1,:,:) is calculated with ice_surface_temperature()
-        
-        ! Local variables
-        integer    :: i, j, k, nx, ny, nz 
-        logical    :: is_float 
-        real(prec) :: bottom_melt 
-        real(prec) :: Q_geo_now 
-        real(prec) :: ghf_conv, ghf_now 
-
-        ghf_conv = 1e-3*sec_year   ! [mW m-2] => [J m-2 a-1]
-
-        nx = size(T_ice,1)
-        ny = size(T_ice,2)
-        nz = size(T_ice,3)
-
-        allocate(zeta(nz)) 
-
-        allocate(rev_Ti(nz))
-        allocate(rev_U(nz))
-        allocate(rev_V(nz))
-        allocate(rev_W(nz))
-        allocate(rev_Q_strn(nz))
-        allocate(rev_Cpi(nz))
-        allocate(rev_Ki(nz))
-        allocate(rev_Ti_pmp(nz))
-        allocate(rev_advecxy(nz))
-        allocate(advecxy(nz))
-        allocate(rev_Ti_new(nz))
-
-        ! Calculate depth axis from height axis (0:1) => (1:0) 
-        zeta = 1.0 - sigma 
-
-        do j = 3, ny-2 
-        do i = 3, nx-2 
-        
-            ! Determine whether current point is floating or grounded  
-            is_float = f_grnd(i,j) .eq. 0.0 
-
-            ! Get geothermal heat flux in proper units 
-            Q_geo_now = Q_geo(i,j)*ghf_conv 
-
-            ! Calculate horizontal advection 
-            call calc_advec_horizontal_column(advecxy,T_ice,ux,uy,dx,i,j)
-
-            ! Store reversed column variables
-            do k = 1, nz  
-                rev_Ti(nz+1-k)       = T_ice(i,j,k)
-                rev_U(nz+1-k)        = ux(i,j,k)
-                rev_V(nz+1-k)        = uy(i,j,k) 
-                rev_W(nz+1-k)        = uz(i,j,k)
-                rev_Q_strn(nz+1-k)   = Q_strn(i,j,k)
-                rev_Cpi(nz+1-k)      = cp(i,j,k)
-                rev_Ki(nz+1-k)       = kt(i,j,k)
-                rev_Ti_pmp(nz+1-k)   = T_pmp(i,j,k)
-                rev_advecxy(nz+1-k)  = advecxy(k)
-            end do  
-
-            ! Initially store original solution in new solution 
-            rev_Ti_new   = rev_Ti
-
-            if (i .eq. 15 .and. j .eq. 15) then 
-                
-                ! TO DO 
-!                 call calc_icetemp_grisli
-
-            else 
-                ! Test my robin solution
-                bmb(i,j)     = 0.0  
-                T_ice(i,j,:) = my_robin_solution(sigma,T_pmp(i,j,:),kt(i,j,:),cp(i,j,:),rho_ice, &
-                                                 H_ice(i,j),T_srf(i,j),mb_net(i,j),Q_geo_now,is_float)
-            end if 
-            
-        end do 
-        end do 
-
-        return 
-
-    end subroutine icetemp_grisli_wrap
-
-
-
     subroutine calc_icetemp_grisli_column(ibase,T_ice,T_rock,T_pmp,cp,ct,uz,Q_strn,advecxy,Q_b, &
-                                            Q_geo,T_srf,H_ice,H_w,is_float,dx,dt)
+                                            Q_geo,T_srf,H_ice,H_w,is_float,dt)
         ! GRISLI solver for thermodynamics for a given column of ice 
 
         ! Note T_ice, T_pmp in [degC], not [K]
@@ -166,7 +38,7 @@ contains
         real(prec), intent(IN)  :: H_ice 
         real(prec), intent(IN)  :: H_w
         logical,    intent(IN)  :: is_float
-        real(prec), intent(IN)  :: dx, dt 
+        real(prec), intent(IN)  :: dt 
 
         ! Local variables 
         integer    :: k, nz   
@@ -174,7 +46,7 @@ contains
         real(prec) :: dzm, de, da, ro, rom, romg, row, cl, cm, cpm
         real(prec) :: dzz, dah, dou, dzi  
         real(prec) :: ct_bas, ct_haut 
-        real(prec) :: ctm, dtdx, fracq 
+        real(prec) :: ctm, fracq 
         real(prec) :: acof1, bcof1, ccof1, s0mer, tbmer 
         real(prec) :: tbdot, tdot, tss
         real(prec) :: bmelt  
@@ -207,8 +79,7 @@ contains
 
         ! Derived constants
         ctm     = dt*cm/rom/cpm/dzm/dzm  
-        dtdx    = dt/dx
-
+        
         nfracq = 1
         fracq  = (1.0-(1.-de/2.0)**nfracq)/nfracq
 

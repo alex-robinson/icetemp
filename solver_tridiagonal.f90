@@ -5,6 +5,8 @@ module solver_tridiagonal
 
    implicit none 
 
+   public 
+   
 contains
 
 !***************************************************************
