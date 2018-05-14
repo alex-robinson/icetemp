@@ -30,7 +30,6 @@ program test_icetemp
         real(prec), allocatable :: kt(:)      ! [] Ice conductivity  
         real(prec), allocatable :: uz(:)      ! [] Vertical velocity 
         real(prec), allocatable :: advecxy(:) ! [] Horizontal heat advection magnitude
-        
         real(prec), allocatable :: Q_strn(:)  ! [] Strain heating 
         
 
@@ -120,6 +119,7 @@ contains
         if (allocated(ice%zeta))    deallocate(ice%zeta)
         if (allocated(ice%T_ice))   deallocate(ice%T_ice)
         if (allocated(ice%T_rock))  deallocate(ice%T_rock)
+        if (allocated(ice%T_pmp))   deallocate(ice%T_pmp)
         if (allocated(ice%cp))      deallocate(ice%cp)
         if (allocated(ice%kt))      deallocate(ice%kt)
         if (allocated(ice%uz))      deallocate(ice%uz)
@@ -131,6 +131,7 @@ contains
         allocate(ice%zeta(nz))
         allocate(ice%T_ice(nz))
         allocate(ice%T_rock(nzr))
+        allocate(ice%T_pmp(nz))
         allocate(ice%cp(nz))
         allocate(ice%kt(nz))
         allocate(ice%uz(nz))
@@ -148,11 +149,14 @@ contains
         ! Initialize remaining vectors to zero 
         ice%T_ice   = 0.0 
         ice%T_rock  = 0.0
+        ice%T_pmp   = 0.0 
         ice%cp      = 0.0
         ice%kt      = 0.0
         ice%uz      = 0.0
         ice%advecxy = 0.0  
         ice%Q_strn  = 0.0
+
+        write(*,*) "Allocated icesheet variables."
 
         return 
 
@@ -207,16 +211,16 @@ contains
 
         ! Update the time step
         call nc_write(filename,"time",time,dim1="time",start=[n],count=[1],ncid=ncid)
-
+        
         ! Update variables (vectors) 
-        call nc_write(filename,"T_ice",ice%T_ice,units="degC",long_name="Ice temperature",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
-        call nc_write(filename,"T_rock",ice%T_rock,units="degC",long_name="Bedrock temperature",dim1="sr",dim2="time",start=[1,n],ncid=ncid)
-        call nc_write(filename,"T_pmp",ice%T_pmp,units="",long_name="Ice pressure melting point",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
-        call nc_write(filename,"cp",ice%cp,units="",long_name="Ice heat capacity",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
-        call nc_write(filename,"kt",ice%kt,units="",long_name="Ice thermal conductivity",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
-        call nc_write(filename,"uz",ice%uz,units="m a**-1",long_name="Ice vertical velocity",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
-        call nc_write(filename,"Q_strn",ice%Q_strn,units="",long_name="Ice strain heating",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
-        call nc_write(filename,"advecxy",ice%advecxy,units="",long_name="Ice horizontal advection",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"T_ice",  ice%T_ice,  units="degC",   long_name="Ice temperature",         dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"T_rock", ice%T_rock, units="degC",   long_name="Bedrock temperature",     dim1="sr",    dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"T_pmp",  ice%T_pmp,  units="",       long_name="Ice pressure melting point",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"cp",     ice%cp,     units="",       long_name="Ice heat capacity",       dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"kt",     ice%kt,     units="",       long_name="Ice thermal conductivity",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"uz",     ice%uz,     units="m a**-1",long_name="Ice vertical velocity",   dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"Q_strn", ice%Q_strn, units="",       long_name="Ice strain heating",      dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"advecxy",ice%advecxy,units="",       long_name="Ice horizontal advection",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
         
         ! Update variables (points) 
         call nc_write(filename,"ibase",ice%ibase,units="",long_name="Basal state",dim1="time",start=[n],ncid=ncid)
