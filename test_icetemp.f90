@@ -3,6 +3,8 @@ program test_icetemp
     use thermodynamics 
     use icetemp_grisli 
     
+    use ncio 
+    
     implicit none 
 
 

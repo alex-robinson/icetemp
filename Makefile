@@ -9,13 +9,17 @@ bindir = .
 # Command-line options at make call
 debug ?= 0
 
+## LIB CONFIGURATION ## 
+INC_NC  = -I/opt/local/include
+LIB_NC  = -L/opt/local/lib -lnetcdff -lnetcdf
+
 ## COMPILER CONFIGURATION ##
 # (should be loaded from config directory)
 
 FC = gfortran
 
-FFLAGS  = -ffree-line-length-none -I$(objdir) -J$(objdir)
-LFLAGS  = 
+FFLAGS  = -ffree-line-length-none -I$(objdir) -J$(objdir) $(INC_NC)
+LFLAGS  = $(LIB_NC)
 DFLAGS_NODEBUG = -O2
 DFLAGS_DEBUG   = -w -g -p -ggdb -ffpe-trap=invalid,zero,overflow,underflow -fbacktrace -fcheck=all
 DFLAGS_PROFILE = -O2 -pg
@@ -38,6 +42,9 @@ endif
 ##
 ###############################################
 
+$(objdir)/ncio.o: $(srcdir)/ncio.f90
+	$(FC) $(DFLAGS) $(FFLAGS) -c -o $@ $<
+
 $(objdir)/defs.o: $(srcdir)/defs.f90
 	$(FC) $(DFLAGS) $(FFLAGS) -c -o $@ $<
 
@@ -57,7 +64,7 @@ $(objdir)/icetemp_grisli.o : $(srcdir)/icetemp_grisli.f90 $(objdir)/defs.o \
 ##
 ###############################################
 
-test_icetemp : $(objdir)/defs.o $(objdir)/thermodynamics.o $(objdir)/icetemp_grisli.o
+test_icetemp : $(objdir)/ncio.o $(objdir)/defs.o $(objdir)/thermodynamics.o $(objdir)/icetemp_grisli.o
 		$(FC) $(DLAGS) $(FFLAGS) $(INC_COORD) $(INC_LIS) -o $(bindir)/test_icetemp.x test_icetemp.f90 \
 			$(LFLAGS) $^
 		@echo " "
