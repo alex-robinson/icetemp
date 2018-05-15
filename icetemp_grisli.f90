@@ -49,7 +49,8 @@ contains
         real(prec) :: ctm, fracq 
         real(prec) :: acof1, bcof1, ccof1, s0mer, tbmer 
         real(prec) :: tbdot, tdot, tss
-        real(prec) :: bmelt  
+        real(prec) :: bmelt
+        real(prec) :: Q_geo_now, ghf_conv   
         integer    :: ifail 
 
         real(prec), allocatable :: aa(:), bb(:), cc(:), rr(:), hh(:) 
@@ -77,9 +78,13 @@ contains
         ccof1   = 7.61e-4
         s0mer   = 34.75
 
+        ! Convert units of Geothermal heat flux
+        ghf_conv  = sec_year*1e-3   ! [mW/m2] => [J a-1 m-2]
+        Q_geo_now = Q_geo*ghf_conv 
+
         ! Derived constants
         ctm     = dt*cm/rom/cpm/dzm/dzm  
-        
+
         nfracq = 1
         fracq  = (1.0-(1.-de/2.0)**nfracq)/nfracq
 
@@ -102,7 +107,7 @@ contains
             cp(k)    = (2115.3+7.79293*T_ice(k))*ro          ! [J m-3 K-1]
             ct(k)    = 3.1014e8*exp(-0.0057*(T_ice(k)+T0))   ! [J m-1 K-1 a-1] 
         end do 
-        
+
         ! Calculate the sea temperature below ice shelf if point is floating 
         if (is_float) then
             tbmer = acof1*s0mer + bcof1 + ccof1*H_ice*ro/row
@@ -111,7 +116,7 @@ contains
         end if 
 
         ! Diagnose basal melt rate and basal state (temperate, frozen, etc.)
-        call bmelt_grounded_column(bmelt,ibase,T,ct,Q_b,H_ice,H_w,Q_geo,is_float, &
+        call bmelt_grounded_column(bmelt,ibase,T,ct,Q_b,H_ice,H_w,Q_geo_now,is_float, &
                                     de,dzm,cm,ro,cl,dt)
 
 
@@ -127,7 +132,7 @@ contains
         aa(nz+nzm) = -1.0
         bb(nz+nzm) =  1.0
         cc(nz+nzm) =  0.0
-        rr(nz+nzm) = -dzm*Q_geo/cm
+        rr(nz+nzm) = -dzm*Q_geo_now/cm
 
 
         if (H_ice .gt. 10.0) then
@@ -186,7 +191,7 @@ contains
                     ! Without conductive bedrock 
                     aa(nz) = -1.0
                     cc(nz) =  0.0
-                    rr(nz) = -(Q_geo-Q_b)/ct(nz)*H_ice*de
+                    rr(nz) = -(Q_geo_now-Q_b)/ct(nz)*H_ice*de
 
                endif
 
@@ -218,7 +223,7 @@ contains
                 end do
                 
                 call tridiag(aa,bb,cc,rr,hh,nz+nzm,ifail)
-
+                
             else
                 ! Without conductive bedrock 
 
@@ -226,7 +231,7 @@ contains
 
                 ! Prescribe solution for bedrock points (linear with ghf)
                 do k=nz+1,nz+nzm
-                    hh(k) = hh(nz)-dzm*(k-nz)*Q_geo/cm
+                    hh(k) = hh(nz)-dzm*(k-nz)*Q_geo_now/cm
                 end do
 
             endif
@@ -331,7 +336,7 @@ contains
                 if (H_ice .gt. 0.0 .and. .not. is_float) then
                     ! Grounded ice sheet point
 
-                    dou = -Q_geo/ct(nz)*de*H_ice
+                    dou = -Q_geo_now/ct(nz)*de*H_ice
                     tss = min(0.0,T_srf)
                     do k = 1, nz 
                         T_new(k) = tss+dou*(k-1.0)
@@ -361,14 +366,14 @@ contains
                     ! Grounded point 
 
                     do k = nz+1, nz+nzm 
-                        hh(k) = T_new(nz)-dzm*(k-nz)*Q_geo/cm
+                        hh(k) = T_new(nz)-dzm*(k-nz)*Q_geo_now/cm
                     end do
 
                 else
                     ! Floating point 
 
                     do k = nz+1, nz+nzm 
-                        hh(K) = Tbmer-dzm*(k-nz)*Q_geo/cm
+                        hh(K) = Tbmer-dzm*(k-nz)*Q_geo_now/cm
                     end do
                 
                 end if 
@@ -427,12 +432,16 @@ contains
         ! to surface temperature 
         if (H_ice .le. 1.0) T(1:nz) = T_srf 
 
+        ! Store solution back in output variables 
+        T_ice  = T(1:nz)
+        T_rock = T(nz+1:nz+nzm)
+
         return 
 
     end subroutine calc_icetemp_grisli_column 
 
 
-    subroutine bmelt_grounded_column(bmelt,ibase,T,ct,Q_b,H_ice,H_w,Q_geo,is_float,de,dzm,cm,ro,cl,dt)
+    subroutine bmelt_grounded_column(bmelt,ibase,T,ct,Q_b,H_ice,H_w,Q_geo_now,is_float,de,dzm,cm,ro,cl,dt)
         ! Diagnose the basal melting rate and the state of the basal 
         ! ice (temperate, frozen, etc), for internal use in calc_icetemp_grisli_column
         
@@ -445,7 +454,7 @@ contains
         real(prec), intent(IN)    :: Q_b
         real(prec), intent(IN)    :: H_ice 
         real(prec), intent(IN)    :: H_w 
-        real(prec), intent(IN)    :: Q_geo 
+        real(prec), intent(IN)    :: Q_geo_now    ! [J a-1 m-2]
         logical,    intent(IN)    :: is_float 
         real(prec), intent(IN)    :: de
         real(prec), intent(IN)    :: dzm 
@@ -471,7 +480,7 @@ contains
                 ! Without conductive bedrock 
 
                 bmelt = (ct(nz)*(T(nz-1)-T(nz))/de/H_ice &
-                        + (Q_b-Q_geo))/ro/cl
+                        + (Q_b-Q_geo_now))/ro/cl
             
             end if
 

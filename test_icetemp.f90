@@ -50,14 +50,14 @@ program test_icetemp
     real(prec)         :: dt_out 
 
     t_start = 0.0     ! [yr]
-    t_end   = 1000.0  ! [yr]
+    t_end   = 10000.0  ! [yr]
     dt      = 5.0     ! [yr]
 
     file1D  = "test.nc" 
-    dt_out  = dt      ! [yr] 
+    dt_out  = 100.0      ! [yr] 
 
     ! Calculate number of time steps to iterate and initialize time  
-    ntot = 5 ! (t_end-t_start)/dt 
+    ntot = (t_end-t_start)/dt 
     time = t_start 
 
     ! Initialize icesheet object 
@@ -89,7 +89,9 @@ program test_icetemp
             call write_step(ice1,ice1%up,filename=file1D,time=time)
         end if 
 
-        write(*,"(a,f14.4)") "time = ", time
+        if (mod(time,20.0)==0) then
+            write(*,"(a,f14.4)") "time = ", time
+        end if 
 
     end do 
 
