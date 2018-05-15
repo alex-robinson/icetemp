@@ -50,11 +50,11 @@ program test_icetemp
     real(prec)         :: dt_out 
 
     t_start = 0.0     ! [yr]
-    t_end   = 10000.0  ! [yr]
+    t_end   = 200000.0  ! [yr]
     dt      = 5.0     ! [yr]
 
     file1D  = "test.nc" 
-    dt_out  = 100.0      ! [yr] 
+    dt_out  = 5000.0      ! [yr] 
 
     ! Calculate number of time steps to iterate and initialize time  
     ntot = (t_end-t_start)/dt 
@@ -141,7 +141,7 @@ contains
         ice%up%T_rock = ice%up%T_ice(1) 
 
         ! Define vertical velocity profile (linear)
-        ice%up%uz(nz) = -ice%smb 
+        ice%up%uz(nz) = ice%smb 
         ice%up%uz(1)  = 0.0 
         do k = 2, nz-1 
             ice%up%uz(k) = ice%up%uz(1)+ice%up%sigma(k)*(ice%up%uz(nz)-ice%up%uz(1))
@@ -312,7 +312,9 @@ contains
             dwn%Q_strn(nz-k+1)  = up%Q_strn(k) 
         end do 
 
-        dwn%T_rock = up%T_rock 
+        do k = 1, nzr
+            dwn%T_rock(nzr-k+1) = up%T_rock(k)
+        end do 
 
         return 
 
@@ -341,7 +343,9 @@ contains
             up%Q_strn(nz-k+1)  = dwn%Q_strn(k) 
         end do 
 
-        up%T_rock = dwn%T_rock 
+        do k = 1, nzr
+            up%T_rock(nzr-k+1) = dwn%T_rock(k)
+        end do 
         
         return 
 
