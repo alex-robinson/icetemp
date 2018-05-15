@@ -10,6 +10,18 @@ program test_icetemp
 
 
 
+    type icesheet_vectors
+        real(prec), allocatable :: sigma(:)   ! [-] Sigma coordinates (either height or depth)
+        real(prec), allocatable :: T_ice(:)   ! [degC] Ice temperature 
+        real(prec), allocatable :: T_rock(:)  ! [degC] Bedrock temperature 
+        real(prec), allocatable :: T_pmp(:)   ! [degC] Ice pressure melting point 
+        real(prec), allocatable :: cp(:)      ! [] Ice heat capacity 
+        real(prec), allocatable :: kt(:)      ! [] Ice conductivity  
+        real(prec), allocatable :: uz(:)      ! [] Vertical velocity 
+        real(prec), allocatable :: advecxy(:) ! [] Horizontal heat advection magnitude
+        real(prec), allocatable :: Q_strn(:)  ! [] Strain heating 
+        
+    end type 
 
     type icesheet 
         real(prec) :: H_ice     ! [m] Ice thickness 
@@ -22,19 +34,9 @@ program test_icetemp
         logical    :: is_float  ! [-] Floating flag 
         integer    :: ibase     ! [-] Basal state (1: frozen, 2: temperate)       
         
-        real(prec), allocatable :: sigma(:)  ! [-] Sigma coordinates (0: base, 1: surface)
-        real(prec), allocatable :: zeta(:)   ! [-] Zeta coordinates (1:  base, 0: surface)
+        type(icesheet_vectors) :: up     ! For height coordinate systems with k=1 base and k=nz surface
+        type(icesheet_vectors) :: dwn    ! For depth coordinate systems with k=1 surface and k=nz base 
         
-        real(prec), allocatable :: T_ice(:)   ! [degC] Ice temperature 
-        real(prec), allocatable :: T_rock(:)  ! [degC] Bedrock temperature 
-        real(prec), allocatable :: T_pmp(:)   ! [degC] Ice pressure melting point 
-        real(prec), allocatable :: cp(:)      ! [] Ice heat capacity 
-        real(prec), allocatable :: kt(:)      ! [] Ice conductivity  
-        real(prec), allocatable :: uz(:)      ! [] Vertical velocity 
-        real(prec), allocatable :: advecxy(:) ! [] Horizontal heat advection magnitude
-        real(prec), allocatable :: Q_strn(:)  ! [] Strain heating 
-        
-
     end type 
 
     type(icesheet) :: ice1
@@ -65,20 +67,26 @@ program test_icetemp
     call init_eismint_summit(ice1)
 
     ! Initialize output file and write intial conditions 
-    call write_init(ice1,filename=file1D,time_init=time)
-    call write_step(ice1,filename=file1D,time=time)
+    call write_init(ice1,filename=file1D,sigma=ice1%up%sigma,time_init=time)
+    call write_step(ice1,ice1%up,filename=file1D,time=time)
 
     do n = 1, ntot 
 
         ! Get current time 
         time = t_start + n*dt 
 
-!         call calc_icetemp_grisli_column(ice1%ibase,ice1%T_ice,ice1%T_rock,ice1%T_pmp, &
-!                                         ice1%cp,ice1%kt,ice1%uz,ice1%Q_strn,ice1%advecxy,ice1%Q_b, &
-!                                         ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%is_float,dt)
+        ! Transfer info to ice1%dwn 
+        call icesheet_up_to_dwn(ice1%dwn,ice1%up)
+
+!         call calc_icetemp_grisli_column(ice1%ibase,ice1%dwn%T_ice,ice1%dwn%T_rock,ice1%dwn%T_pmp, &
+!                                         ice1%dwn%cp,ice1%dwn%kt,ice1%dwn%uz,ice1%dwn%Q_strn,ice1%dwn%advecxy, &
+!                                         ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%is_float,dt)
+    
+        ! Transfer info back to ice1%up 
+        call icesheet_dwn_to_up(ice1%up,ice1%dwn)
 
         if (mod(time,dt_out)==0) then 
-            call write_step(ice1,filename=file1D,time=time)
+            call write_step(ice1,ice1%up,filename=file1D,time=time)
         end if 
 
         write(*,"(a,f14.4)") "time = ", time
@@ -97,38 +105,37 @@ contains
         ! Local variables 
         integer :: k, nz, nzr 
 
-        nz  = size(ice%T_ice)
-        nzr = size(ice%T_rock) 
+        nz  = size(ice%up%T_ice)
+        nzr = size(ice%up%T_rock) 
 
         ice%T_srf    = 239.0-T0    ! [degC]
         ice%smb      = 0.3         ! [m/a]
         ice%bmb      = 0.0         ! [m/a]
         ice%Q_geo    = 42.0        ! [mW/m2]
-
         ice%H_ice    = 2997.0      ! [m] Summit thickness
         ice%H_w      = 0.0         ! [m] No basal water
         ice%Q_b      = 0.0         ! [] No basal frictional heating 
-        ice%Q_strn   = 0.0         ! [] No internal strain heating 
-        ice%advecxy  = 0.0         ! [] No horizontal advection 
-
         ice%is_float = .FALSE.     ! Grounded point 
         ice%ibase    = 1           ! Frozen 
 
+        ice%up%Q_strn  = 0.0         ! [] No internal strain heating 
+        ice%up%advecxy = 0.0         ! [] No horizontal advection 
+
         ! Calculate pressure melting point 
-        ice%T_pmp = calc_T_pmp(ice%sigma*ice%H_ice,T0) 
+        ice%up%T_pmp = calc_T_pmp(ice%up%sigma*ice%H_ice,T0) 
 
         ! Define surface temperature of ice based on simple atmospheric correction below zero
-        ice%T_ice(nz) = ice%T_srf 
+        ice%up%T_ice(nz) = ice%T_srf 
 
         ! Basal temperature is 10 deg below freezing point 
-        ice%T_ice(1) = (calc_T_pmp(ice%H_ice,T0)-T0) - 10.0 
+        ice%up%T_ice(1) = (calc_T_pmp(ice%H_ice,T0)-T0) - 10.0 
 
         ! Intermediate layers are linearly interpolated 
         do k = 2, nz-1 
-            ice%T_ice(k) = ice%T_ice(1)+ice%sigma(k)*(ice%T_ice(nz)-ice%T_ice(1))
+            ice%up%T_ice(k) = ice%up%T_ice(1)+ice%up%sigma(k)*(ice%up%T_ice(nz)-ice%up%T_ice(1))
         end do 
 
-        ice%T_rock = ice%T_ice(1) 
+        ice%up%T_rock = ice%up%T_ice(1) 
 
         return 
 
@@ -146,47 +153,49 @@ contains
         ! Local variables 
         integer :: k 
 
+        ! First allocate 'up' variables (with vertical coordinate as height)
+
         ! Make sure all vectors are deallocated
-        if (allocated(ice%sigma))   deallocate(ice%sigma)
-        if (allocated(ice%zeta))    deallocate(ice%zeta)
-        if (allocated(ice%T_ice))   deallocate(ice%T_ice)
-        if (allocated(ice%T_rock))  deallocate(ice%T_rock)
-        if (allocated(ice%T_pmp))   deallocate(ice%T_pmp)
-        if (allocated(ice%cp))      deallocate(ice%cp)
-        if (allocated(ice%kt))      deallocate(ice%kt)
-        if (allocated(ice%uz))      deallocate(ice%uz)
-        if (allocated(ice%advecxy)) deallocate(ice%advecxy)
-        if (allocated(ice%Q_strn))  deallocate(ice%Q_strn)
+        if (allocated(ice%up%sigma))   deallocate(ice%up%sigma)
+        if (allocated(ice%up%T_ice))   deallocate(ice%up%T_ice)
+        if (allocated(ice%up%T_rock))  deallocate(ice%up%T_rock)
+        if (allocated(ice%up%T_pmp))   deallocate(ice%up%T_pmp)
+        if (allocated(ice%up%cp))      deallocate(ice%up%cp)
+        if (allocated(ice%up%kt))      deallocate(ice%up%kt)
+        if (allocated(ice%up%uz))      deallocate(ice%up%uz)
+        if (allocated(ice%up%advecxy)) deallocate(ice%up%advecxy)
+        if (allocated(ice%up%Q_strn))  deallocate(ice%up%Q_strn)
         
         ! Allocate vectors with desired lengths
-        allocate(ice%sigma(nz))
-        allocate(ice%zeta(nz))
-        allocate(ice%T_ice(nz))
-        allocate(ice%T_rock(nzr))
-        allocate(ice%T_pmp(nz))
-        allocate(ice%cp(nz))
-        allocate(ice%kt(nz))
-        allocate(ice%uz(nz))
-        allocate(ice%advecxy(nz))
-        allocate(ice%Q_strn(nz))
+        allocate(ice%up%sigma(nz))
+        allocate(ice%up%T_ice(nz))
+        allocate(ice%up%T_rock(nzr))
+        allocate(ice%up%T_pmp(nz))
+        allocate(ice%up%cp(nz))
+        allocate(ice%up%kt(nz))
+        allocate(ice%up%uz(nz))
+        allocate(ice%up%advecxy(nz))
+        allocate(ice%up%Q_strn(nz))
 
         ! Initialize sigma and zeta 
-        ice%sigma = 0.0  
+        ice%up%sigma = 0.0  
         do k = 1, nz 
-            ice%sigma(k) = real(k-1,prec) / real(nz-1,prec)
+            ice%up%sigma(k) = real(k-1,prec) / real(nz-1,prec)
         end do 
-        
-        ice%zeta = 1.0 - ice%sigma 
 
         ! Initialize remaining vectors to zero 
-        ice%T_ice   = 0.0 
-        ice%T_rock  = 0.0
-        ice%T_pmp   = 0.0 
-        ice%cp      = 0.0
-        ice%kt      = 0.0
-        ice%uz      = 0.0
-        ice%advecxy = 0.0  
-        ice%Q_strn  = 0.0
+        ice%up%T_ice   = 0.0 
+        ice%up%T_rock  = 0.0
+        ice%up%T_pmp   = 0.0 
+        ice%up%cp      = 0.0
+        ice%up%kt      = 0.0
+        ice%up%uz      = 0.0
+        ice%up%advecxy = 0.0  
+        ice%up%Q_strn  = 0.0
+
+        ! Now allocate down variables too (with vertical coordinate as depth)
+        ice%dwn = ice%up 
+        ice%dwn%sigma = 1.0 - ice%up%sigma 
 
         write(*,*) "Allocated icesheet variables."
 
@@ -194,44 +203,44 @@ contains
 
     end subroutine icesheet_allocate 
 
-    subroutine write_init(ice,filename,time_init)
+    subroutine write_init(ice,filename,sigma,time_init)
 
         implicit none 
 
         type(icesheet),   intent(IN) :: ice 
         character(len=*), intent(IN) :: filename 
+        real(prec),       intent(IN) :: sigma(:) 
         real(prec),       intent(IN) :: time_init
 
         ! Local variables 
         integer    :: nzr 
         real(prec) :: dzr 
 
-        nzr = size(ice%T_rock,1)
+        nzr = size(ice%up%T_rock,1)
 
         ! Initialize netcdf file and dimensions
         call nc_create(filename)
-        call nc_write_dim(filename,"s",     x=ice%sigma, units="1")
-        call nc_write_dim(filename,"zeta",  x=ice%zeta, units="1")
-        call nc_write_dim(filename,"sr",    x=0,nx=nzr,dx=1,units="1")
+        call nc_write_dim(filename,"sigma", x=sigma, units="1")
+        call nc_write_dim(filename,"sigmar",x=0,nx=nzr,dx=1,units="1")
         call nc_write_dim(filename,"time",  x=time_init,dx=1.0_prec,nx=1,units="years",unlimited=.TRUE.)
 
         return
 
     end subroutine write_init 
     
-    subroutine write_step(ice,filename,time)
+    subroutine write_step(ice,vecs,filename,time)
 
         implicit none 
         
-        type(icesheet),   intent(IN) :: ice
+        type(icesheet),         intent(IN) :: ice
+        type(icesheet_vectors), intent(IN) :: vecs
         character(len=*), intent(IN) :: filename
         real(prec),       intent(IN) :: time
 
         ! Local variables
         integer    :: ncid, n
         real(prec) :: time_prev 
-
-        character(len=12), parameter :: vert_dim = "zeta"    ! zeta or sigma 
+        character(len=12), parameter :: vert_dim = "sigma"
 
         ! Open the file for writing
         call nc_open(filename,ncid,writable=.TRUE.)
@@ -245,22 +254,22 @@ contains
         call nc_write(filename,"time",time,dim1="time",start=[n],count=[1],ncid=ncid)
 
         ! Update variables (vectors) 
-        call nc_write(filename,"T_ice",  ice%T_ice,  units="degC",   long_name="Ice temperature",         dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
-        call nc_write(filename,"T_rock", ice%T_rock, units="degC",   long_name="Bedrock temperature",     dim1="sr",    dim2="time",start=[1,n],ncid=ncid)
-        call nc_write(filename,"T_pmp",  ice%T_pmp,  units="",       long_name="Ice pressure melting point",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
-        call nc_write(filename,"cp",     ice%cp,     units="",       long_name="Ice heat capacity",       dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
-        call nc_write(filename,"kt",     ice%kt,     units="",       long_name="Ice thermal conductivity",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
-        call nc_write(filename,"uz",     ice%uz,     units="m a**-1",long_name="Ice vertical velocity",   dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
-        call nc_write(filename,"Q_strn", ice%Q_strn, units="",       long_name="Ice strain heating",      dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
-        call nc_write(filename,"advecxy",ice%advecxy,units="",       long_name="Ice horizontal advection",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"T_ice",  vecs%T_ice,  units="degC",   long_name="Ice temperature",         dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"T_rock", vecs%T_rock, units="degC",   long_name="Bedrock temperature",     dim1="sigmar",dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"T_pmp",  vecs%T_pmp,  units="",       long_name="Ice pressure melting point",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"cp",     vecs%cp,     units="",       long_name="Ice heat capacity",       dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"kt",     vecs%kt,     units="",       long_name="Ice thermal conductivity",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"uz",     vecs%uz,     units="m a**-1",long_name="Ice vertical velocity",   dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"Q_strn", vecs%Q_strn, units="",       long_name="Ice strain heating",      dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"advecxy",vecs%advecxy,units="",       long_name="Ice horizontal advection",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
         
         ! Update variables (points) 
-        call nc_write(filename,"ibase",ice%ibase,units="",long_name="Basal state",dim1="time",start=[n],ncid=ncid)
-        call nc_write(filename,"Q_b",ice%Q_b,units="",long_name="Basal heating",dim1="time",start=[n],ncid=ncid)
-        call nc_write(filename,"Q_geo",ice%Q_geo,units="mW m**-2",long_name="Geothermal heat flux",dim1="time",start=[n],ncid=ncid)
-        call nc_write(filename,"T_srf",ice%T_srf,units="degC",long_name="Surface temperature",dim1="time",start=[n],ncid=ncid)
-        call nc_write(filename,"H_ice",ice%H_ice,units="m",long_name="Ice thickness",dim1="time",start=[n],ncid=ncid)
-        call nc_write(filename,"H_w",ice%H_w,units="m",long_name="Basal water thickness",dim1="time",start=[n],ncid=ncid)
+        call nc_write(filename,"ibase",   ice%ibase,units="",long_name="Basal state",dim1="time",start=[n],ncid=ncid)
+        call nc_write(filename,"Q_b",     ice%Q_b,units="",long_name="Basal heating",dim1="time",start=[n],ncid=ncid)
+        call nc_write(filename,"Q_geo",   ice%Q_geo,units="mW m**-2",long_name="Geothermal heat flux",dim1="time",start=[n],ncid=ncid)
+        call nc_write(filename,"T_srf",   ice%T_srf,units="degC",long_name="Surface temperature",dim1="time",start=[n],ncid=ncid)
+        call nc_write(filename,"H_ice",   ice%H_ice,units="m",long_name="Ice thickness",dim1="time",start=[n],ncid=ncid)
+        call nc_write(filename,"H_w",     ice%H_w,units="m",long_name="Basal water thickness",dim1="time",start=[n],ncid=ncid)
         call nc_write(filename,"is_float",ice%is_float,units="",long_name="Floating flag",dim1="time",start=[n],ncid=ncid)
         
         ! Close the netcdf file
@@ -270,4 +279,66 @@ contains
 
     end subroutine write_step
 
+    subroutine icesheet_up_to_dwn(dwn,up)
+
+        implicit none 
+
+        type(icesheet_vectors), intent(INOUT) :: dwn 
+        type(icesheet_vectors), intent(IN)    :: up 
+
+        ! Local variables 
+        integer :: k, nz, nzr 
+
+        nz  = size(up%T_ice,1)
+        nzr = size(up%T_rock,1)
+
+        do k = 1, nz 
+            dwn%T_ice(nz-k+1)   = up%T_ice(k) 
+            dwn%T_pmp(nz-k+1)   = up%T_pmp(k) 
+            dwn%cp(nz-k+1)      = up%cp(k) 
+            dwn%kt(nz-k+1)      = up%kt(k) 
+            dwn%uz(nz-k+1)      = up%uz(k) 
+            dwn%Q_strn(nz-k+1)  = up%Q_strn(k) 
+            dwn%advecxy(nz-k+1) = up%advecxy(k) 
+        end do 
+
+        do k = 1, nzr 
+            dwn%T_rock(nzr-k+1) = up%T_rock(k) 
+        end do 
+
+        return 
+
+    end subroutine icesheet_up_to_dwn 
+
+    subroutine icesheet_dwn_to_up(up,dwn)
+
+        implicit none 
+
+        type(icesheet_vectors), intent(INOUT) :: up 
+        type(icesheet_vectors), intent(IN)    :: dwn 
+
+        ! Local variables 
+        integer :: k, nz, nzr 
+
+        nz  = size(dwn%T_ice,1)
+        nzr = size(dwn%T_rock,1)
+
+        do k = 1, nz 
+            up%T_ice(nz-k+1)   = dwn%T_ice(k) 
+            up%T_pmp(nz-k+1)   = dwn%T_pmp(k) 
+            up%cp(nz-k+1)      = dwn%cp(k) 
+            up%kt(nz-k+1)      = dwn%kt(k) 
+            up%uz(nz-k+1)      = dwn%uz(k) 
+            up%Q_strn(nz-k+1)  = dwn%Q_strn(k) 
+            up%advecxy(nz-k+1) = dwn%advecxy(k) 
+        end do 
+
+        do k = 1, nzr 
+            up%T_rock(nzr-k+1) = dwn%T_rock(k) 
+        end do 
+
+        return 
+
+    end subroutine icesheet_dwn_to_up 
+    
 end program test_icetemp 
