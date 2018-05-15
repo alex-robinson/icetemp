@@ -78,9 +78,9 @@ program test_icetemp
         ! Transfer info to ice1%dwn 
         call icesheet_up_to_dwn(ice1%dwn,ice1%up)
 
-!         call calc_icetemp_grisli_column(ice1%ibase,ice1%dwn%T_ice,ice1%dwn%T_rock,ice1%dwn%T_pmp, &
-!                                         ice1%dwn%cp,ice1%dwn%kt,ice1%dwn%uz,ice1%dwn%Q_strn,ice1%dwn%advecxy, &
-!                                         ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%is_float,dt)
+        call calc_icetemp_grisli_column(ice1%ibase,ice1%dwn%T_ice,ice1%dwn%T_rock,ice1%dwn%T_pmp, &
+                                        ice1%dwn%cp,ice1%dwn%kt,ice1%dwn%uz,ice1%dwn%Q_strn,ice1%dwn%advecxy, &
+                                        ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%is_float,dt)
     
         ! Transfer info back to ice1%up 
         call icesheet_dwn_to_up(ice1%up,ice1%dwn)
@@ -109,7 +109,7 @@ contains
         nzr = size(ice%up%T_rock) 
 
         ice%T_srf    = 239.0-T0    ! [degC]
-        ice%smb      = 0.3         ! [m/a]
+        ice%smb      = 0.5         ! [m/a]
         ice%bmb      = 0.0         ! [m/a]
         ice%Q_geo    = 42.0        ! [mW/m2]
         ice%H_ice    = 2997.0      ! [m] Summit thickness
@@ -122,13 +122,13 @@ contains
         ice%up%advecxy = 0.0         ! [] No horizontal advection 
 
         ! Calculate pressure melting point 
-        ice%up%T_pmp = calc_T_pmp(ice%up%sigma*ice%H_ice,T0) 
+        ice%up%T_pmp = calc_T_pmp((1.0-ice%up%sigma)*ice%H_ice,T0) - T0 
 
         ! Define surface temperature of ice based on simple atmospheric correction below zero
         ice%up%T_ice(nz) = ice%T_srf 
 
         ! Basal temperature is 10 deg below freezing point 
-        ice%up%T_ice(1) = (calc_T_pmp(ice%H_ice,T0)-T0) - 10.0 
+        ice%up%T_ice(1) = ice%up%T_pmp(1) - 10.0 
 
         ! Intermediate layers are linearly interpolated 
         do k = 2, nz-1 
@@ -136,6 +136,13 @@ contains
         end do 
 
         ice%up%T_rock = ice%up%T_ice(1) 
+
+        ! Define vertical velocity profile (linear)
+        ice%up%uz(nz) = -ice%smb 
+        ice%up%uz(1)  = 0.0 
+        do k = 2, nz-1 
+            ice%up%uz(k) = ice%up%uz(1)+ice%up%sigma(k)*(ice%up%uz(nz)-ice%up%uz(1))
+        end do 
 
         return 
 

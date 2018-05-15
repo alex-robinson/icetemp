@@ -102,7 +102,7 @@ contains
             cp(k)    = (2115.3+7.79293*T_ice(k))*ro          ! [J m-3 K-1]
             ct(k)    = 3.1014e8*exp(-0.0057*(T_ice(k)+T0))   ! [J m-1 K-1 a-1] 
         end do 
-
+        
         ! Calculate the sea temperature below ice shelf if point is floating 
         if (is_float) then
             tbmer = acof1*s0mer + bcof1 + ccof1*H_ice*ro/row
