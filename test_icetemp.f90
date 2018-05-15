@@ -70,19 +70,20 @@ program test_icetemp
     call write_init(ice1,filename=file1D,sigma=ice1%up%sigma,time_init=time)
     call write_step(ice1,ice1%up,filename=file1D,time=time)
 
+    ! Transfer info to ice1%dwn 
+    call icesheet_up_to_dwn(ice1%dwn,ice1%up)
+
     do n = 1, ntot 
 
         ! Get current time 
         time = t_start + n*dt 
 
-        ! Transfer info to ice1%dwn 
-        call icesheet_up_to_dwn(ice1%dwn,ice1%up)
-
+        ! Call grisli icetemp routine
         call calc_icetemp_grisli_column(ice1%ibase,ice1%dwn%T_ice,ice1%dwn%T_rock,ice1%dwn%T_pmp, &
                                         ice1%dwn%cp,ice1%dwn%kt,ice1%dwn%uz,ice1%dwn%Q_strn,ice1%dwn%advecxy, &
                                         ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%is_float,dt)
     
-        ! Transfer info back to ice1%up 
+        ! Transfer info back to ice1%up for writing
         call icesheet_dwn_to_up(ice1%up,ice1%dwn)
 
         if (mod(time,dt_out)==0) then 
@@ -269,8 +270,8 @@ contains
         call nc_write(filename,"cp",     vecs%cp,     units="",       long_name="Ice heat capacity",       dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
         call nc_write(filename,"kt",     vecs%kt,     units="",       long_name="Ice thermal conductivity",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
         call nc_write(filename,"uz",     vecs%uz,     units="m a**-1",long_name="Ice vertical velocity",   dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
-        call nc_write(filename,"Q_strn", vecs%Q_strn, units="",       long_name="Ice strain heating",      dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
         call nc_write(filename,"advecxy",vecs%advecxy,units="",       long_name="Ice horizontal advection",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"Q_strn", vecs%Q_strn, units="",       long_name="Ice strain heating",      dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
         
         ! Update variables (points) 
         call nc_write(filename,"ibase",   ice%ibase,units="",long_name="Basal state",dim1="time",start=[n],ncid=ncid)
@@ -307,13 +308,11 @@ contains
             dwn%cp(nz-k+1)      = up%cp(k) 
             dwn%kt(nz-k+1)      = up%kt(k) 
             dwn%uz(nz-k+1)      = up%uz(k) 
-            dwn%Q_strn(nz-k+1)  = up%Q_strn(k) 
             dwn%advecxy(nz-k+1) = up%advecxy(k) 
+            dwn%Q_strn(nz-k+1)  = up%Q_strn(k) 
         end do 
 
-        do k = 1, nzr 
-            dwn%T_rock(nzr-k+1) = up%T_rock(k) 
-        end do 
+        dwn%T_rock = up%T_rock 
 
         return 
 
@@ -338,16 +337,14 @@ contains
             up%cp(nz-k+1)      = dwn%cp(k) 
             up%kt(nz-k+1)      = dwn%kt(k) 
             up%uz(nz-k+1)      = dwn%uz(k) 
-            up%Q_strn(nz-k+1)  = dwn%Q_strn(k) 
             up%advecxy(nz-k+1) = dwn%advecxy(k) 
+            up%Q_strn(nz-k+1)  = dwn%Q_strn(k) 
         end do 
 
-        do k = 1, nzr 
-            up%T_rock(nzr-k+1) = dwn%T_rock(k) 
-        end do 
-
+        up%T_rock = dwn%T_rock 
+        
         return 
 
     end subroutine icesheet_dwn_to_up 
-    
+
 end program test_icetemp 
