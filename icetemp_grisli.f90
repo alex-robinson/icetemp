@@ -26,9 +26,9 @@ contains
         integer,    intent(INOUT) :: ibase
         real(prec), intent(OUT) :: T_ice(:)
         real(prec), intent(OUT) :: T_rock(:)
-        real(prec), intent(OUT) :: T_pmp(:)
-        real(prec), intent(OUT) :: cp(:)
-        real(prec), intent(OUT) :: ct(:)
+        real(prec), intent(IN)  :: T_pmp(:)
+        real(prec), intent(IN)  :: cp(:)
+        real(prec), intent(IN)  :: ct(:)
         real(prec), intent(IN)  :: uz(:)
         real(prec), intent(IN)  :: Q_strn(:)
         real(prec), intent(IN)  :: advecxy(:)
@@ -100,18 +100,22 @@ contains
         ! Populate new solution to be safe 
         T_new = T 
 
+        ! NOTE: Thermal properties are now calculated outside of the routine
+        ! The below notes are included for reference. Also now cp is expected
+        ! in units of [J kg-1 K-1] to be consistent with literature, while
+        ! grisli originally used units cp*ro with units of [J m-3 K-1]
+
         ! GRISLI THERMAL PROPERTIES ===========================================
 !         ! Calculate thermal properties
 !         do k = 1, nz  
-!             T_pmp(k) = -0.00087*(k-1)*de*H_ice               ! [degC]
-!             cp(k)    = (2115.3+7.79293*T_ice(k))*ro          ! [J m-3 K-1]
+!             cp(k)    = (2115.3+7.79293*T_ice(k))             ! [J kg-1 K-1]
 !             ct(k)    = 3.1014e8*exp(-0.0057*(T_ice(k)+T0))   ! [J m-1 K-1 a-1] 
 !         end do 
         ! =====================================================================
 
         ! EISMINT THERMAL PROPERTIES ==========================================
-        cp = 2009.0 * ro   ! [J m-3 K-1]
-        ct = 6.6e7         ! [J m-1 K-1 a-1] 
+!         cp = 2009.0        ! [J kg-1 K-1]
+!         ct = 6.6e7         ! [J m-1 K-1 a-1] 
         ! =====================================================================
         
         ! Calculate the sea temperature below ice shelf if point is floating 
@@ -162,7 +166,7 @@ contains
 
             do k = 2, nz-1
 
-                dzz = dou/cp(k)
+                dzz = dou/(cp(k)*ro)
 
                 ! Conductivity as the Harmonic average of the grid points
                 Ct_haut = ct_bas
@@ -401,11 +405,7 @@ contains
             !Q_b   = 0.0     ! ajr: now calculated externally
 
         end if
-
-        ! Ensure T_pmp at the ice surface is equal to zero [degC]
-        T_pmp(1) = 0.0
-
-
+        
         ! Apply limits: less than 3degC / 5 yrs variation and no colder than -70 degC
         do k=1,nz+nzm
 

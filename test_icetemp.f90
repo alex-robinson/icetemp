@@ -58,6 +58,7 @@ program test_icetemp
     file1D  = "test.nc" 
     dt_out  = 20000.0      ! [yr] 
 
+
     ! Calculate number of time steps to iterate and initialize time  
     ntot = (t_end-t_start)/dt 
     time = t_start 
@@ -101,7 +102,7 @@ program test_icetemp
 
     ! Also calculate the robin solution for comparison 
     robin = ice1  
-    robin%up%T_ice = my_robin_solution(robin%up%sigma,robin%up%T_pmp,robin%up%kt,robin%up%cp/rho_ice,rho_ice, &
+    robin%up%T_ice = my_robin_solution(robin%up%sigma,robin%up%T_pmp,robin%up%kt,robin%up%cp,rho_ice, &
                         robin%H_ice,robin%T_srf,robin%smb,robin%Q_geo,robin%is_float)
     
     ! Write Robin solution for comparison 
@@ -143,8 +144,11 @@ contains
         ice%is_float = .FALSE.     ! Grounded point 
         ice%ibase    = 1           ! Frozen 
 
-        ice%up%Q_strn  = 0.0         ! [] No internal strain heating 
-        ice%up%advecxy = 0.0         ! [] No horizontal advection 
+        ice%up%cp      = 2009.0    ! [J kg-1 K-1]
+        ice%up%kt      = 6.67e7    ! [J a-1 m-1 K-1]
+    
+        ice%up%Q_strn  = 0.0       ! [] No internal strain heating 
+        ice%up%advecxy = 0.0       ! [] No horizontal advection 
 
         ! Calculate pressure melting point 
         ice%up%T_pmp = calc_T_pmp((1.0-ice%up%sigma)*ice%H_ice,T0) - T0 
