@@ -1,7 +1,7 @@
 module icetemp_grisli
     ! Wrapping the original grisli icetemp solution for yelmo 
 
-    use defs, only : prec, pi, g, sec_year, T0, rho_ice, rho_sw, rho_w
+    use defs, only : prec, pi, g, sec_year, T0, rho_ice, rho_sw
     use solver_tridiagonal, only : tridiag 
 
     implicit none
