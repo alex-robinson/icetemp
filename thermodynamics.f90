@@ -418,8 +418,8 @@ contains
         real(prec), parameter :: sqrt_pi   = sqrt(pi) 
         real(prec), parameter :: T_ocn     = 271.15   ! [K]
         real(prec), parameter :: H_ice_min = 0.1      ! [m] Minimum ice thickness to calculate Robin solution 
-
-        real(prec) :: Q_geo_now 
+        real(prec), parameter :: mb_net_min = 1e-2    ! [m a-1] Minimum allowed net mass balance for stability
+        real(prec) :: Q_geo_now, mb_now  
 
         nz = size(T_ice,1) 
         
@@ -431,10 +431,13 @@ contains
         if (.not. is_float .and. H_ice .gt. H_ice_min .and. mb_net .gt. 0.0) then 
             ! Impose Robin solution 
             
+            !mb_now = max(mb_net,mb_net_min)
+            mb_now = mb_net 
+
             do k = 1, nz 
                 z     = sigma(k)*H_ice              ! Ice thickness up to this layer from base 
                 kappa = kt(k)/(cp(k)*rho_ice)       ! Thermal diffusivity 
-                ll    = sqrt(2*kappa*H_ice/mb_net)  ! Thermal_length_scale
+                ll    = sqrt(2*kappa*H_ice/mb_now)  ! Thermal_length_scale
 
                 ! Calculate ice temperature for this layer 
                 T_ice(k) = (sqrt_pi/2.0)*ll*dTdz_b*(error_function(z/ll)-error_function(H_ice/ll)) + T_srf 
@@ -444,7 +447,7 @@ contains
             ! Impose linear profile 
 
             T_ice(nz) = T_srf
-            T_ice(1)  = calc_T_pmp(H_ice,T0) - 10.0 
+            T_ice(1)  = T_pmp(1) - 10.0 
 
             ! Intermediate layers are linearly interpolated 
             do k = 2, nz-1 

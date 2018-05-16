@@ -53,11 +53,11 @@ program test_icetemp
     ! User options 
 
     t_start = 0.0     ! [yr]
-    t_end   = 300000.0  ! [yr]
+    t_end   = 1000000.0  ! [yr]
     dt      = 5.0     ! [yr]
 
     file1D  = "test.nc" 
-    dt_out  = 20000.0      ! [yr] 
+    dt_out  = 50000.0      ! [yr] 
 
     nz      = 21           ! [--] Number of ice sheet points 
     nzr     = 11           ! [--] Number of bedrock points (for conductive bedrock solution)
@@ -132,7 +132,7 @@ program test_icetemp
     write(*,*)
     write(*,*) "========================="
     write(*,*)
-    
+
 contains 
 
 
