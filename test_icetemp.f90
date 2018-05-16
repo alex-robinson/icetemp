@@ -63,7 +63,7 @@ program test_icetemp
     time = t_start 
 
     ! Initialize icesheet object 
-    call icesheet_allocate(ice1,nz=31,nzr=21)
+    call icesheet_allocate(ice1,nz=21,nzr=11)
     
 
     ! Prescribe initial eismint conditions for testing 

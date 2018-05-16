@@ -8,7 +8,7 @@ module icetemp_grisli
     implicit none
     
     ! Impose parameter choice here for testing conductive bedrock or not
-    logical,    parameter :: conductive_bedrock = .TRUE. 
+    logical,    parameter :: conductive_bedrock = .FALSE. 
     
     private
     public :: calc_icetemp_grisli_column
@@ -61,7 +61,7 @@ contains
 
         nzm     = size(T_rock,1)   ! Number of bedrock points 
         nzz     = nz+nzm           ! Total grid points (ice plus bedrock)
-        dzm     = 300.0            ! [m] Bedrock step height 
+        dzm     = 600.0            ! [m] Bedrock step height 
         de      = 1.0/(nz-1)       ! vertical step in ice and mantle
         da      = 4.0e7            ! Mantle diffusion
         ro      = rho_ice          ! [kg m-3] Ice density 
@@ -79,7 +79,7 @@ contains
         s0mer   = 34.75
 
         ! Convert units of Geothermal heat flux
-        Q_geo_now = -Q_geo * sec_year*1e-3   ! [mW/m2] => [J a-1 m-2]
+        Q_geo_now = -Q_geo *sec_year*1e-3   ! [mW/m2] => [J a-1 m-2]
 
         ! Derived constants
         ctm     = dt*cm/rom/cpm/dzm/dzm  
