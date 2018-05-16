@@ -8,8 +8,6 @@ program test_icetemp
     
     implicit none 
 
-
-
     type icesheet_vectors
         real(prec), allocatable :: sigma(:)   ! [-] Sigma coordinates (either height or depth)
         real(prec), allocatable :: T_ice(:)   ! [degC] Ice temperature 
@@ -39,17 +37,20 @@ program test_icetemp
         
     end type 
 
+    ! Define different icesheet objects for use in proram
     type(icesheet) :: ice1
     type(icesheet) :: robin 
     type(icesheet) :: diff 
     
-    ! Timing
-    real(prec) :: t_start, t_end, dt, time  
-    integer    :: n, ntot 
-
-    ! Output 
+    ! Local variables
+    real(prec)         :: t_start, t_end, dt, time  
+    integer            :: n, ntot 
     character(len=512) :: file1D 
     real(prec)         :: dt_out 
+    integer            :: nz, nzr 
+
+    ! ===============================================================
+    ! User options 
 
     t_start = 0.0     ! [yr]
     t_end   = 300000.0  ! [yr]
@@ -58,13 +59,17 @@ program test_icetemp
     file1D  = "test.nc" 
     dt_out  = 20000.0      ! [yr] 
 
+    nz      = 21           ! [--] Number of ice sheet points 
+    nzr     = 11           ! [--] Number of bedrock points (for conductive bedrock solution)
 
-    ! Calculate number of time steps to iterate and initialize time  
-    ntot = (t_end-t_start)/dt 
+    ! ===============================================================
+
+    ! Initialize time and calculate number of time steps to iterate and 
     time = t_start 
-
+    ntot = (t_end-t_start)/dt 
+    
     ! Initialize icesheet object 
-    call icesheet_allocate(ice1,nz=21,nzr=11)
+    call icesheet_allocate(ice1,nz=nz,nzr=nzr)
     
 
     ! Prescribe initial eismint conditions for testing 
@@ -74,9 +79,10 @@ program test_icetemp
     call write_init(ice1,filename=file1D,sigma=ice1%up%sigma,time_init=time)
     call write_step(ice1,ice1%up,filename=file1D,time=time)
 
-    ! Transfer info to ice1%dwn 
+    ! Transfer info to ice1%dwn format
     call icesheet_up_to_dwn(ice1%dwn,ice1%up)
 
+    ! Loop over time steps and perform thermodynamic calculations
     do n = 1, ntot 
 
         ! Get current time 
@@ -103,14 +109,14 @@ program test_icetemp
     ! Also calculate the robin solution for comparison 
     robin = ice1  
     robin%up%T_ice = my_robin_solution(robin%up%sigma,robin%up%T_pmp,robin%up%kt,robin%up%cp,rho_ice, &
-                        robin%H_ice,robin%T_srf,robin%smb,robin%Q_geo,robin%is_float)
+                                       robin%H_ice,robin%T_srf,robin%smb,robin%Q_geo,robin%is_float)
     
     ! Write Robin solution for comparison 
     file1D = "robin.nc"
     call write_init(robin,filename=file1D,sigma=robin%up%sigma,time_init=time)
     call write_step(robin,robin%up,filename=file1D,time=time)
 
-    ! Compare and write results 
+    ! Compare our solution with robin and write comparison results 
     diff = robin 
     diff%up%T_ice = ice1%up%T_ice - robin%up%T_ice 
 
@@ -119,6 +125,14 @@ program test_icetemp
     call write_step(diff,diff%up,filename=file1D,time=time)
 
 
+    write(*,*)
+    write(*,*) "========================="
+    write(*,*) 
+    write(*,*) "Program finished."
+    write(*,*)
+    write(*,*) "========================="
+    write(*,*)
+    
 contains 
 
 
