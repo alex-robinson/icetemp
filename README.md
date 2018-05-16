@@ -17,8 +17,9 @@ Getting started
 
     1. Clone the repository 
     2. Modify the Makefile to match your systems settings.
-       There are no dependencies.
+       Dependencies: NetCDF library.
     3. Compile the code: `make test_icetemp`.
-    4. Check the results.
+    4. Run the executable: `./test_icetemp.x`.
+    5. Check the results.
 
 
