@@ -22,30 +22,30 @@ contains
 
         implicit none 
 
-        integer,    intent(INOUT) :: ibase
-        real(prec), intent(OUT) :: T_ice(:)
-        real(prec), intent(OUT) :: T_rock(:)
-        real(prec), intent(IN)  :: T_pmp(:)
-        real(prec), intent(IN)  :: cp(:)
-        real(prec), intent(IN)  :: ct(:)
-        real(prec), intent(IN)  :: uz(:)
-        real(prec), intent(IN)  :: Q_strn(:)
-        real(prec), intent(IN)  :: advecxy(:)
-        real(prec), intent(IN)  :: Q_b 
-        real(prec), intent(IN)  :: Q_geo 
-        real(prec), intent(IN)  :: T_srf
-        real(prec), intent(IN)  :: H_ice 
-        real(prec), intent(IN)  :: H_w
-        logical,    intent(IN)  :: is_float
-        real(prec), intent(IN)  :: dt 
+        integer,    intent(INOUT) :: ibase      ! [--]   State of base (temperate, frozen, etc)
+        real(prec), intent(OUT) :: T_ice(:)     ! [degC] Ice column temperature
+        real(prec), intent(OUT) :: T_rock(:)    ! [degC] Bedrock column temperature
+        real(prec), intent(IN)  :: T_pmp(:)     ! [degC] Pressure melting point temp.
+        real(prec), intent(IN)  :: cp(:)        ! [J kg-1 K-1] Specific heat capacity
+        real(prec), intent(IN)  :: ct(:)        ! [J a-1 m-1 K-1] Heat conductivity 
+        real(prec), intent(IN)  :: uz(:)        ! [m a-1] Vertical velocity 
+        real(prec), intent(IN)  :: Q_strn(:)    ! [K a-1] Internal strain heat production in ice
+        real(prec), intent(IN)  :: advecxy(:)   ! [K a-1 m-2] Horizontal heat advection 
+        real(prec), intent(IN)  :: Q_b          ! [J a-1 m-2] Basal frictional heat production 
+        real(prec), intent(IN)  :: Q_geo        ! [mW m-2] Geothermal heat flux 
+        real(prec), intent(IN)  :: T_srf        ! [degC] Surface temperature 
+        real(prec), intent(IN)  :: H_ice        ! [m] Ice thickness 
+        real(prec), intent(IN)  :: H_w          ! [m] Basal water layer thickness 
+        logical,    intent(IN)  :: is_float     ! [--] Floating point or grounded?
+        real(prec), intent(IN)  :: dt           ! [a] Time step 
 
         ! Local variables 
         integer    :: k, nz   
-        integer    :: nzm, nzz, nfracq  
+        integer    :: nzm, nzz  
         real(prec) :: dzm, de, da, ro, rom, romg, row, cl, cm, cpm
         real(prec) :: dzz, dah, dou, dzi  
         real(prec) :: ct_bas, ct_haut 
-        real(prec) :: ctm, fracq 
+        real(prec) :: ctm 
         real(prec) :: acof1, bcof1, ccof1, s0mer, tbmer 
         real(prec) :: tbdot, tdot, tss
         real(prec) :: bmelt
@@ -56,10 +56,13 @@ contains
         real(prec), allocatable :: abis(:), bbis(:), cbis(:), rbis(:), hbis(:)  
         real(prec), allocatable :: T(:), T_new(:) 
 
-        nz = size(T_ice,1) 
-
+        ! Store local vector sizes 
+        nz      = size(T_ice,1)    ! Number of ice points 
         nzm     = size(T_rock,1)   ! Number of bedrock points 
         nzz     = nz+nzm           ! Total grid points (ice plus bedrock)
+
+        ! Some parameters defined here for now, for testing 
+        ! (these will move to a parameter file later)
         dzm     = 600.0            ! [m] Bedrock step height 
         de      = 1.0/(nz-1)       ! vertical step in ice and mantle
         da      = 4.0e7            ! Mantle diffusion
@@ -82,9 +85,6 @@ contains
 
         ! Derived constants
         ctm     = dt*cm/rom/cpm/dzm/dzm  
-
-        nfracq = 1
-        fracq  = (1.0-(1.-de/2.0)**nfracq)/nfracq
 
         ! Allocate local variables 
         allocate(aa(nzz),bb(nzz),cc(nzz),rr(nzz),hh(nzz))

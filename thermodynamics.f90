@@ -13,7 +13,6 @@ module thermodynamics
     private 
     public :: calc_advec_horizontal_column
     public :: calc_basal_temp_gradients_column
-    public :: calc_basal_temp_gradients
     public :: calc_bmb_grounded
     public :: calc_strain_heating
     public :: calc_basal_heating
@@ -28,8 +27,7 @@ contains
 
 
         subroutine calc_advec_horizontal_column(advecxy,var_ice,ux,uy,dx,i,j)
-        ! Newly implemented advection algorithms (ajr)
-        ! Note: these are also symmetric, and maybe more stable? 
+        ! Newly implemented advection algorithms (ajr) 
         ! Output: [K a-1 m-2]
 
         implicit none
@@ -152,50 +150,6 @@ contains
 
     end subroutine calc_basal_temp_gradients_column
 
-    subroutine calc_basal_temp_gradients(dTdz_b,dTrdz_b,T_ice,T_rock,H_ice,f_grnd,sigma,sigmar,H_rock)
-        ! Calculate the temperature gradients in basal layer of ice and upper layer of bedrock 
-
-        real(prec), intent(OUT) :: dTdz_b(:,:) 
-        real(prec), intent(OUT) :: dTrdz_b(:,:) 
-        real(prec), intent(IN) :: T_ice(:,:,:) 
-        real(prec), intent(IN) :: T_rock(:,:,:) 
-        real(prec), intent(IN) :: H_ice(:,:) 
-        real(prec), intent(IN) :: f_grnd(:,:) 
-        real(prec), intent(IN) :: sigma(:) 
-        real(prec), intent(IN) :: sigmar(:) 
-        real(prec), intent(IN) :: H_rock 
-
-        ! Local variables 
-        integer    :: i, j, nx, ny, nzr  
-        real(prec) :: dz 
-
-        nx = size(dTdz_b,1)
-        ny = size(dTdz_b,2)
-        
-        nzr = size(T_rock,3) 
-
-        do j = 1, ny 
-        do i = 1, nx 
-            
-            ! Get gradient in ice 
-            if (H_ice(i,j) .gt. 0.0_prec) then 
-                dz = H_ice(i,j) * (sigma(2)-sigma(1))
-                dTdz_b(i,j) = (T_ice(i,j,2) - T_ice(i,j,1)) / dz 
-            else 
-                dTdz_b(i,j) = 0.0_prec 
-            end if 
-
-            ! Get gradient in rock 
-            dz = H_rock * (sigmar(nzr)-sigma(nzr-1))
-            dTrdz_b(i,j) = (T_rock(i,j,nzr) - T_rock(i,j,nzr-1)) / dz 
-            
-        end do
-        end do 
-        
-        return 
-
-    end subroutine calc_basal_temp_gradients
-
     elemental subroutine calc_bmb_grounded(bmb_grnd,T_prime_b,dTdz_b,dTrdz_b,kt_b,rho_ice, &
                                             Q_b,f_grnd,kt_m)
         ! Calculate everywhere there is at least some grounded ice 
@@ -265,36 +219,16 @@ contains
 
         implicit none
 
-        real(prec), intent(OUT) :: Q_strn(:,:,:)          ! [Pa m a-1 ??] Heat production
-        !type(stress_3D_class), intent(IN) :: strss        ! Stress tensor
-        !type(strain_3D_class), intent(IN) :: strn         ! Strain rate tensor
+        real(prec), intent(OUT) :: Q_strn(:,:,:)          ! [K a-1] Heat production
         real(prec),            intent(IN) :: de(:,:,:)    ! [UNITS?] Effective strain rate 
         real(prec),            intent(IN) :: visc(:,:,:)  ! [UNITS?] Viscosity
-        real(prec),            intent(IN) :: cp(:,:,:)    ! [J/kg/K] Specific heat capacity
+        real(prec),            intent(IN) :: cp(:,:,:)    ! [J kg-1 K-1] Specific heat capacity
         real(prec),            intent(IN) :: rho_ice      ! [kg m-3] Ice density 
 
         ! Local variables
-        integer :: i, j, k, nx, ny, nz 
         real(prec), parameter :: Q_strn_max = 0.1         ! Check this limit!! 
 
-        nx = size(Q_strn,1)
-        ny = size(Q_strn,2)
-        nz = size(Q_strn,3)
-
-        ! Note: we use the simpler approach because in the shallow
-        ! model, the stress rate is simply the strain rate squared
-
-        ! Directly from Q_strn = tr(stress*strain)/cp
-        ! (Cuffey and Patterson (2010) pag. 417, eq. 9.30)
-
-!         Q_strn = ( strss%txx*strn%dxx &
-!                  + strss%tyy*strn%dyy &
-!                  + strss%tzz*strn%dzz &    ! this term is not available yet in the code, needs to be calculated
-!              + 2.0*strss%txy*strn%dxy &
-!              + 2.0*strss%txz*strn%dxz &
-!              + 2.0*strss%tyz*strn%dyz ) * 1.0/(cp*rho_ice) 
-
-        ! Simpler approach:
+        ! Simple approach:
         ! Calculate Q_strn from effective strain rate and viscosity
         ! (Greve and Blatter (2009) eqs. 4.7 and 5.65): 
         !     Q_strn = tr(stress*strn)/cp = tr(2*visc*strn*strn)/cp = 2*visc*tr(strn*strn)/cp = 4*visc*de^2/cp
