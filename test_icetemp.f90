@@ -40,6 +40,8 @@ program test_icetemp
     end type 
 
     type(icesheet) :: ice1
+    type(icesheet) :: robin 
+    type(icesheet) :: diff 
     
     ! Timing
     real(prec) :: t_start, t_end, dt, time  
@@ -50,19 +52,20 @@ program test_icetemp
     real(prec)         :: dt_out 
 
     t_start = 0.0     ! [yr]
-    t_end   = 200000.0  ! [yr]
+    t_end   = 300000.0  ! [yr]
     dt      = 5.0     ! [yr]
 
     file1D  = "test.nc" 
-    dt_out  = 5000.0      ! [yr] 
+    dt_out  = 20000.0      ! [yr] 
 
     ! Calculate number of time steps to iterate and initialize time  
     ntot = (t_end-t_start)/dt 
     time = t_start 
 
     ! Initialize icesheet object 
-    call icesheet_allocate(ice1,nz=21,nzr=11)
+    call icesheet_allocate(ice1,nz=31,nzr=21)
     
+
     ! Prescribe initial eismint conditions for testing 
     call init_eismint_summit(ice1)
 
@@ -95,6 +98,25 @@ program test_icetemp
         end if 
 
     end do 
+
+    ! Also calculate the robin solution for comparison 
+    robin = ice1  
+    robin%up%T_ice = my_robin_solution(robin%up%sigma,robin%up%T_pmp,robin%up%kt,robin%up%cp/rho_ice,rho_ice, &
+                        robin%H_ice,robin%T_srf,robin%smb,robin%Q_geo,robin%is_float)
+    
+    ! Write Robin solution for comparison 
+    file1D = "robin.nc"
+    call write_init(robin,filename=file1D,sigma=robin%up%sigma,time_init=time)
+    call write_step(robin,robin%up,filename=file1D,time=time)
+
+    ! Compare and write results 
+    diff = robin 
+    diff%up%T_ice = ice1%up%T_ice - robin%up%T_ice 
+
+    file1D = "diff.nc"
+    call write_init(diff,filename=file1D,sigma=diff%up%sigma,time_init=time)
+    call write_step(diff,diff%up,filename=file1D,time=time)
+
 
 contains 
 
@@ -141,10 +163,10 @@ contains
         ice%up%T_rock = ice%up%T_ice(1) 
 
         ! Define vertical velocity profile (linear)
-        ice%up%uz(nz) = ice%smb 
+        ice%up%uz(nz) = -ice%smb 
         ice%up%uz(1)  = 0.0 
         do k = 2, nz-1 
-            ice%up%uz(k) = ice%up%uz(1)+ice%up%sigma(k)*(ice%up%uz(nz)-ice%up%uz(1))
+            ice%up%uz(k) = ice%up%uz(1)+(ice%up%sigma(k))*(ice%up%uz(nz)-ice%up%uz(1))
         end do 
 
         return 
@@ -267,6 +289,8 @@ contains
         call nc_write(filename,"T_ice",  vecs%T_ice,  units="degC",   long_name="Ice temperature",         dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
         call nc_write(filename,"T_rock", vecs%T_rock, units="degC",   long_name="Bedrock temperature",     dim1="sigmar",dim2="time",start=[1,n],ncid=ncid)
         call nc_write(filename,"T_pmp",  vecs%T_pmp,  units="",       long_name="Ice pressure melting point",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"T_prime",vecs%T_ice-vecs%T_pmp,units="degC",long_name="Ice temperature",         dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        
         call nc_write(filename,"cp",     vecs%cp,     units="",       long_name="Ice heat capacity",       dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
         call nc_write(filename,"kt",     vecs%kt,     units="",       long_name="Ice thermal conductivity",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
         call nc_write(filename,"uz",     vecs%uz,     units="m a**-1",long_name="Ice vertical velocity",   dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
@@ -307,7 +331,7 @@ contains
             dwn%T_pmp(nz-k+1)   = up%T_pmp(k) 
             dwn%cp(nz-k+1)      = up%cp(k) 
             dwn%kt(nz-k+1)      = up%kt(k) 
-            dwn%uz(nz-k+1)      = up%uz(k) 
+            dwn%uz(nz-k+1)      = -up%uz(k) 
             dwn%advecxy(nz-k+1) = up%advecxy(k) 
             dwn%Q_strn(nz-k+1)  = up%Q_strn(k) 
         end do 
@@ -338,7 +362,7 @@ contains
             up%T_pmp(nz-k+1)   = dwn%T_pmp(k) 
             up%cp(nz-k+1)      = dwn%cp(k) 
             up%kt(nz-k+1)      = dwn%kt(k) 
-            up%uz(nz-k+1)      = dwn%uz(k) 
+            up%uz(nz-k+1)      = -dwn%uz(k) 
             up%advecxy(nz-k+1) = dwn%advecxy(k) 
             up%Q_strn(nz-k+1)  = dwn%Q_strn(k) 
         end do 

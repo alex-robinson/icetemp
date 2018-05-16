@@ -50,7 +50,7 @@ contains
         real(prec) :: acof1, bcof1, ccof1, s0mer, tbmer 
         real(prec) :: tbdot, tdot, tss
         real(prec) :: bmelt
-        real(prec) :: Q_geo_now, ghf_conv   
+        real(prec) :: Q_geo_now   
         integer    :: ifail 
 
         real(prec), allocatable :: aa(:), bb(:), cc(:), rr(:), hh(:) 
@@ -59,9 +59,9 @@ contains
 
         nz = size(T_ice,1) 
 
-        nzm     = 11               ! Number of bedrock points 
+        nzm     = size(T_rock,1)   ! Number of bedrock points 
         nzz     = nz+nzm           ! Total grid points (ice plus bedrock)
-        dzm     = 600.0            ! [m] Bedrock step height 
+        dzm     = 300.0            ! [m] Bedrock step height 
         de      = 1.0/(nz-1)       ! vertical step in ice and mantle
         da      = 4.0e7            ! Mantle diffusion
         ro      = rho_ice          ! [kg m-3] Ice density 
@@ -79,8 +79,7 @@ contains
         s0mer   = 34.75
 
         ! Convert units of Geothermal heat flux
-        ghf_conv  = sec_year*1e-3   ! [mW/m2] => [J a-1 m-2]
-        Q_geo_now = Q_geo*ghf_conv 
+        Q_geo_now = -Q_geo * sec_year*1e-3   ! [mW/m2] => [J a-1 m-2]
 
         ! Derived constants
         ctm     = dt*cm/rom/cpm/dzm/dzm  
@@ -101,13 +100,20 @@ contains
         ! Populate new solution to be safe 
         T_new = T 
 
-        ! Calculate thermal properties
-        do k = 1, nz  
-            T_pmp(k) = -0.00087*(k-1)*de*H_ice               ! [degC]
-            cp(k)    = (2115.3+7.79293*T_ice(k))*ro          ! [J m-3 K-1]
-            ct(k)    = 3.1014e8*exp(-0.0057*(T_ice(k)+T0))   ! [J m-1 K-1 a-1] 
-        end do 
+        ! GRISLI THERMAL PROPERTIES ===========================================
+!         ! Calculate thermal properties
+!         do k = 1, nz  
+!             T_pmp(k) = -0.00087*(k-1)*de*H_ice               ! [degC]
+!             cp(k)    = (2115.3+7.79293*T_ice(k))*ro          ! [J m-3 K-1]
+!             ct(k)    = 3.1014e8*exp(-0.0057*(T_ice(k)+T0))   ! [J m-1 K-1 a-1] 
+!         end do 
+        ! =====================================================================
 
+        ! EISMINT THERMAL PROPERTIES ==========================================
+        cp = 2009.0 * ro   ! [J m-3 K-1]
+        ct = 6.6e7         ! [J m-1 K-1 a-1] 
+        ! =====================================================================
+        
         ! Calculate the sea temperature below ice shelf if point is floating 
         if (is_float) then
             tbmer = acof1*s0mer + bcof1 + ccof1*H_ice*ro/row
@@ -223,7 +229,7 @@ contains
                 end do
                 
                 call tridiag(aa,bb,cc,rr,hh,nz+nzm,ifail)
-                
+
             else
                 ! Without conductive bedrock 
 

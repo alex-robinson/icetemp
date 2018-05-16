@@ -214,11 +214,11 @@ contains
         real(prec), intent(IN)  :: kt_m              ! [J a-1 m-1 K-1] Heat conductivity in mantle (lithosphere) 
 
         ! Local variables
-        real(prec) :: conv_ghf, coeff 
+        real(prec) :: Q_geo_now, coeff 
         real(prec), parameter :: tol = 1e-10 
 
         ! Get geothermal heat flux in the right units
-        conv_ghf = 1e-3*sec_year    ! [mW m-2] => [J a-1 m-2]
+!         Q_geo_now = Q_geo*1e-3*sec_year    ! [mW m-2] => [J a-1 m-2]
 
         ! Calculate the grounded basal mass balance following 
         ! Cuffey and Patterson (2010), Eq. 9.38 (Page 420)
@@ -236,7 +236,7 @@ contains
 !                 else
 !                     ! Classic Cuffey and Patterson (2010) formula 
 
-!                     bmb_grnd = -1.0_prec/(rho_ice*L_ice)* ( Q_b + kt_b*dTdz_b + (Q_geo*conv_ghf) ) 
+!                     bmb_grnd = -1.0_prec/(rho_ice*L_ice)* ( Q_b + kt_b*dTdz_b + (Q_geo_now) ) 
 
 !                 end if 
             
@@ -485,10 +485,14 @@ contains
         real(prec), parameter :: T_ocn     = 271.15   ! [K]
         real(prec), parameter :: H_ice_min = 0.1      ! [m] Minimum ice thickness to calculate Robin solution 
 
+        real(prec) :: Q_geo_now 
+
         nz = size(T_ice,1) 
-                
+        
+        Q_geo_now = Q_geo *1e-3*sec_year    ! [mW m-2] => [J a-1 m-2]
+
         ! Calculate temperature gradient at base 
-        dTdz_b = -Q_geo/kt(1) 
+        dTdz_b = -Q_geo_now/kt(1) 
 
         if (.not. is_float .and. H_ice .gt. H_ice_min .and. mb_net .gt. 0.0) then 
             ! Impose Robin solution 
