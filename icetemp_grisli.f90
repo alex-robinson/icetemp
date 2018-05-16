@@ -3,7 +3,6 @@ module icetemp_grisli
 
     use defs, only : prec, pi, g, sec_year, T0, rho_ice, rho_sw, rho_w
     use solver_tridiagonal, only : tridiag 
-    use thermodynamics 
 
     implicit none
     
@@ -405,7 +404,7 @@ contains
             !Q_b   = 0.0     ! ajr: now calculated externally
 
         end if
-        
+
         ! Apply limits: less than 3degC / 5 yrs variation and no colder than -70 degC
         do k=1,nz+nzm
 
