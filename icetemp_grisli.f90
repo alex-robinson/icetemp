@@ -10,11 +10,11 @@ module icetemp_grisli
     logical,    parameter :: conductive_bedrock = .FALSE. 
     
     private
-    public :: calc_icetemp_grisli_column
+    public :: calc_icetemp_grisli_column_dwn
 
 contains 
     
-    subroutine calc_icetemp_grisli_column(ibase,T_ice,T_rock,T_pmp,cp,ct,uz,Q_strn,advecxy,Q_b, &
+    subroutine calc_icetemp_grisli_column_dwn(ibase,T_ice,T_rock,T_pmp,cp,ct,uz,Q_strn,advecxy,Q_b, &
                                             Q_geo,T_srf,H_ice,H_w,is_float,dt)
         ! GRISLI solver for thermodynamics for a given column of ice 
 
@@ -125,7 +125,7 @@ contains
         end if 
 
         ! Diagnose basal melt rate and basal state (temperate, frozen, etc.)
-        call bmelt_grounded_column(bmelt,ibase,T,ct,Q_b,H_ice,H_w,Q_geo_now,is_float, &
+        call bmelt_grounded_column_dwn(bmelt,ibase,T,ct,Q_b,H_ice,H_w,Q_geo_now,is_float, &
                                     de,dzm,cm,ro,cl,dt)
 
 
@@ -443,13 +443,14 @@ contains
 
         return 
 
-    end subroutine calc_icetemp_grisli_column 
+    end subroutine calc_icetemp_grisli_column_dwn 
 
 
-    subroutine bmelt_grounded_column(bmelt,ibase,T,ct,Q_b,H_ice,H_w,Q_geo_now,is_float,de,dzm,cm,ro,cl,dt)
+    subroutine bmelt_grounded_column_dwn(bmelt,ibase,T,ct,Q_b,H_ice,H_w,Q_geo_now,is_float,de,dzm,cm,ro,cl,dt)
         ! Diagnose the basal melting rate and the state of the basal 
         ! ice (temperate, frozen, etc), for internal use in calc_icetemp_grisli_column
-        
+        ! Note: for downward sigma coordinates (sigma=depth, k=1 surface, kz base)
+
         implicit none 
 
         real(prec), intent(OUT)   :: bmelt 
@@ -527,7 +528,92 @@ contains
 
         return
 
-    end subroutine bmelt_grounded_column 
+    end subroutine bmelt_grounded_column_dwn 
 
+    subroutine bmelt_grounded_column_up(bmelt,ibase,T_ice,T_rock,ct,Q_b,H_ice,H_w,Q_geo_now,is_float,de,dzm,cm,ro,cl,dt)
+        ! Diagnose the basal melting rate and the state of the basal 
+        ! ice (temperate, frozen, etc), for internal use in calc_icetemp_grisli_column
+        ! Note: for upward sigma coordinates (sigma=height, k=1 base, kz surface)
+        
+        implicit none 
+
+        real(prec), intent(OUT)   :: bmelt 
+        integer,    intent(INOUT) :: ibase 
+        real(prec), intent(IN)    :: T_ice(:) 
+        real(prec), intent(IN)    :: T_rock(:) 
+        real(prec), intent(IN)    :: ct(:) 
+        real(prec), intent(IN)    :: Q_b
+        real(prec), intent(IN)    :: H_ice 
+        real(prec), intent(IN)    :: H_w 
+        real(prec), intent(IN)    :: Q_geo_now    ! [J a-1 m-2]
+        logical,    intent(IN)    :: is_float 
+        real(prec), intent(IN)    :: de
+        real(prec), intent(IN)    :: dzm 
+        real(prec), intent(IN)    :: cm 
+        real(prec), intent(IN)    :: ro 
+        real(prec), intent(IN)    :: cl 
+        real(prec), intent(IN)    :: dt 
+
+        ! Local variables 
+        integer :: nz, nzr  
+
+        nz  = size(T_ice) 
+        nzr = size(T_rock)
+
+        if (.not. is_float .and. H_ice .gt. 10.0 .and. ibase .ne. 1) then 
+
+            if (conductive_bedrock) then
+                ! With conductive bedrock
+
+                bmelt = (ct(1)*(T_ice(2)-T_ice(1))/de/H_ice &
+                        - cm*(T_ice(1)-T_rock(nzr))/dzm+Q_b)/ro/cl
+
+            else
+                ! Without conductive bedrock 
+
+                bmelt = (ct(1)*(T_ice(2)-T_ice(1))/de/H_ice &
+                        + (Q_b-Q_geo_now))/ro/cl
+            
+            end if
+
+
+            if (bmelt .ge. 0.0) then
+                ! Basal melt present, temperate base
+                
+                ibase = 2
+                                   
+            else
+                ! Refreezing 
+
+                if (H_w .gt. -bmelt*dt) then
+                    ! If basal water will remain after refreezing, still temperate 
+                    
+                    ibase=2
+
+                else if (ibase .eq. 3) then
+                    ! Point became frozen now  
+                    ibase = 4
+                    bmelt = 0.0
+                    !H_w   = 0.0    ! ajr: now handled externally 
+
+                else if (H_w .le. -bmelt*dt) then
+                    ! Refreezing, but there is not enough water
+
+                    ibase = 3
+                
+                end if
+
+            end if
+
+        else
+            ! Thin or no ice 
+
+            bmelt = 0.0
+
+        end if 
+
+        return
+
+    end subroutine bmelt_grounded_column_up 
 end module icetemp_grisli 
 

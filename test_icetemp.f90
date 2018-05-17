@@ -53,11 +53,11 @@ program test_icetemp
     ! User options 
 
     t_start = 0.0     ! [yr]
-    t_end   = 1000000.0  ! [yr]
+    t_end   = 200000.0  ! [yr]
     dt      = 5.0     ! [yr]
 
     file1D  = "test.nc" 
-    dt_out  = 50000.0      ! [yr] 
+    dt_out  = 10000.0      ! [yr] 
 
     nz      = 21           ! [--] Number of ice sheet points 
     nzr     = 11           ! [--] Number of bedrock points (for conductive bedrock solution)
@@ -89,9 +89,9 @@ program test_icetemp
         time = t_start + n*dt 
 
         ! Call grisli icetemp routine
-        call calc_icetemp_grisli_column(ice1%ibase,ice1%dwn%T_ice,ice1%dwn%T_rock,ice1%dwn%T_pmp, &
-                                        ice1%dwn%cp,ice1%dwn%kt,ice1%dwn%uz,ice1%dwn%Q_strn,ice1%dwn%advecxy, &
-                                        ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%is_float,dt)
+        call calc_icetemp_grisli_column_dwn(ice1%ibase,ice1%dwn%T_ice,ice1%dwn%T_rock,ice1%dwn%T_pmp, &
+                                            ice1%dwn%cp,ice1%dwn%kt,ice1%dwn%uz,ice1%dwn%Q_strn,ice1%dwn%advecxy, &
+                                            ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%is_float,dt)
     
         ! Transfer info back to ice1%up for writing
         call icesheet_dwn_to_up(ice1%up,ice1%dwn)
