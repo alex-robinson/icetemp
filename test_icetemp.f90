@@ -88,14 +88,19 @@ program test_icetemp
         ! Get current time 
         time = t_start + n*dt 
 
-        ! Call grisli icetemp routine
-        call calc_icetemp_grisli_column_dwn(ice1%ibase,ice1%dwn%T_ice,ice1%dwn%T_rock,ice1%dwn%T_pmp, &
-                                            ice1%dwn%cp,ice1%dwn%kt,ice1%dwn%uz,ice1%dwn%Q_strn,ice1%dwn%advecxy, &
-                                            ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%is_float,dt)
-    
-        ! Transfer info back to ice1%up for writing
-        call icesheet_dwn_to_up(ice1%up,ice1%dwn)
+!         ! Call grisli icetemp routine
+!         call calc_icetemp_grisli_column_dwn(ice1%ibase,ice1%dwn%T_ice,ice1%dwn%T_rock,ice1%dwn%T_pmp, &
+!                                             ice1%dwn%cp,ice1%dwn%kt,ice1%dwn%uz,ice1%dwn%Q_strn,ice1%dwn%advecxy, &
+!                                             ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%is_float,dt)
+        
+!         ! Transfer info back to ice1%up for writing
+!         call icesheet_dwn_to_up(ice1%up,ice1%dwn)
 
+        call calc_icetemp_grisli_column_up(ice1%ibase,ice1%up%T_ice,ice1%up%T_rock,ice1%up%T_pmp, &
+                                            ice1%up%cp,ice1%up%kt,ice1%up%uz,ice1%up%Q_strn,ice1%up%advecxy, &
+                                            ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%is_float, &
+                                            ice1%up%sigma,dt)
+    
         if (mod(time,dt_out)==0) then 
             call write_step(ice1,ice1%up,filename=file1D,time=time)
         end if 

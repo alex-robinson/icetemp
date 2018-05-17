@@ -11,9 +11,444 @@ module icetemp_grisli
     
     private
     public :: calc_icetemp_grisli_column_dwn
-
+    public :: calc_icetemp_grisli_column_up 
 contains 
     
+    subroutine calc_icetemp_grisli_column_up(ibase,T_ice,T_rock,T_pmp,cp,ct,uz,Q_strn,advecxy,Q_b, &
+                                            Q_geo,T_srf,H_ice,H_w,is_float,sigma,dt)
+        ! GRISLI solver for thermodynamics for a given column of ice 
+        ! Note sigma=height, k=1 base, k=nz surface 
+        ! Note T_ice, T_pmp in [degC], not [K]
+
+        implicit none 
+
+        integer,    intent(INOUT) :: ibase      ! [--]   State of base (temperate, frozen, etc)
+        real(prec), intent(OUT) :: T_ice(:)     ! [degC] Ice column temperature
+        real(prec), intent(OUT) :: T_rock(:)    ! [degC] Bedrock column temperature
+        real(prec), intent(IN)  :: T_pmp(:)     ! [degC] Pressure melting point temp.
+        real(prec), intent(IN)  :: cp(:)        ! [J kg-1 K-1] Specific heat capacity
+        real(prec), intent(IN)  :: ct(:)        ! [J a-1 m-1 K-1] Heat conductivity 
+        real(prec), intent(IN)  :: uz(:)        ! [m a-1] Vertical velocity 
+        real(prec), intent(IN)  :: Q_strn(:)    ! [K a-1] Internal strain heat production in ice
+        real(prec), intent(IN)  :: advecxy(:)   ! [K a-1 m-2] Horizontal heat advection 
+        real(prec), intent(IN)  :: Q_b          ! [J a-1 m-2] Basal frictional heat production 
+        real(prec), intent(IN)  :: Q_geo        ! [mW m-2] Geothermal heat flux 
+        real(prec), intent(IN)  :: T_srf        ! [degC] Surface temperature 
+        real(prec), intent(IN)  :: H_ice        ! [m] Ice thickness 
+        real(prec), intent(IN)  :: H_w          ! [m] Basal water layer thickness 
+        logical,    intent(IN)  :: is_float     ! [--] Floating point or grounded?
+        real(prec), intent(IN)  :: sigma(:)     ! [--] Vertical sigma coordinates (sigma==height)
+        real(prec), intent(IN)  :: dt           ! [a] Time step 
+
+        ! Local variables 
+        integer    :: k, ki, nz   
+        integer    :: nzm, nzz, nzb   
+        real(prec) :: dzm, de, da, ro, rom, romg, row, cl, cm, cpm
+        real(prec) :: dzz, dah, dou, dzi  
+        real(prec) :: ct_bas, ct_haut 
+        real(prec) :: ctm 
+        real(prec) :: acof1, bcof1, ccof1, s0mer, tbmer 
+        real(prec) :: tbdot, tdot, tss
+        real(prec) :: bmelt
+        real(prec) :: Q_geo_now   
+        integer    :: ifail 
+
+        real(prec), allocatable :: aa(:), bb(:), cc(:), rr(:), hh(:) 
+        real(prec), allocatable :: abis(:), bbis(:), cbis(:), rbis(:), hbis(:)  
+        real(prec), allocatable :: T(:), T_new(:) 
+
+        ! Store local vector sizes 
+        nz      = size(T_ice,1)    ! Number of ice points 
+        nzm     = size(T_rock,1)   ! Number of bedrock points 
+        nzz     = nz+nzm           ! Total grid points (ice plus bedrock)
+
+        nzb     = nzm + 1          ! Index of ice base in column (ice plus bedrock)
+
+
+        ! Some parameters defined here for now, for testing 
+        ! (these will move to a parameter file later)
+        dzm     = 600.0            ! [m] Bedrock step height 
+        de      = 1.0/(nz-1)       ! vertical step in ice
+        da      = 4.0e7            ! Mantle diffusion
+        ro      = rho_ice          ! [kg m-3] Ice density 
+        rom     = 3300.0           ! [kg m-3] Density of mantle
+        romg    = rom*g            ! [kg m-2 s-2] Density * gravity constant
+        row     = rho_sw           ! [kg m-3] Seawater density 
+        cl      = 3.35e5           ! [J kg-1] specific latent heat of fusion of ice
+        cm      = 1.04e8           ! [J m-1 K-1 a-1] Thermal conductivity of mantle 
+        cpm     = 1000.0           ! [J kg-1 K-1] Specific heat capacity of mantle
+
+        ! Coefficients for sea temperature from Jenkins (1991)
+        acof1   = -0.0575
+        bcof1   = 0.0901
+        ccof1   = 7.61e-4
+        s0mer   = 34.75
+
+        ! Convert units of Geothermal heat flux
+        Q_geo_now = Q_geo *sec_year*1e-3   ! [mW/m2] => [J a-1 m-2]
+
+        ! Derived constants
+        ctm     = dt*cm/rom/cpm/dzm/dzm  
+
+        ! Allocate local variables 
+        allocate(aa(nzz),bb(nzz),cc(nzz),rr(nzz),hh(nzz))
+        allocate(abis(nzz),bbis(nzz),cbis(nzz),rbis(nzz),hbis(nzz))
+
+        allocate(T(nzz),T_new(nzz))
+
+        ! Populate local temperature column (ice+rock) 
+        T(1:nzm)       = T_rock 
+        T(nzb:nzz)     = T_ice 
+
+        ! Populate new solution to be safe 
+        T_new = T 
+
+        ! NOTE: Thermal properties are now calculated outside of the routine
+        ! The below notes are included for reference. Also now cp is expected
+        ! in units of [J kg-1 K-1] to be consistent with literature, while
+        ! grisli originally used units cp*ro with units of [J m-3 K-1]
+
+        ! GRISLI THERMAL PROPERTIES ===========================================
+!         ! Calculate thermal properties
+!         do k = 1, nz  
+!             cp(k)    = (2115.3+7.79293*T_ice(k))             ! [J kg-1 K-1]
+!             ct(k)    = 3.1014e8*exp(-0.0057*(T_ice(k)+T0))   ! [J m-1 K-1 a-1] 
+!         end do 
+        ! =====================================================================
+
+        ! EISMINT THERMAL PROPERTIES ==========================================
+!         cp = 2009.0        ! [J kg-1 K-1]
+!         ct = 6.6e7         ! [J m-1 K-1 a-1] 
+        ! =====================================================================
+        
+        ! Calculate the sea temperature below ice shelf if point is floating 
+        if (is_float) then
+            tbmer = acof1*s0mer + bcof1 + ccof1*H_ice*ro/row
+        else 
+            tbmer = 0.0 
+        end if 
+
+        ! Diagnose basal melt rate and basal state (temperate, frozen, etc.)
+        call bmelt_grounded_column_up(bmelt,ibase,T_ice,T_rock,ct,Q_b,H_ice,H_w, &
+                                      Q_geo_now,is_float,de,dzm,cm,ro,cl,dt)
+
+        ! Boundary conditions at the base of the bedrock 
+        aa(1) = -1.0
+        bb(1) =  1.0
+        cc(1) =  0.0
+        rr(1) = dzm*Q_geo_now/cm
+    
+        ! Invariant conditions within the bedrock 
+        do k= 2, nzm
+            aa(k) = -ctm
+            bb(k) = 1.0+2.0*ctm
+            cc(k) = -ctm
+        end do
+
+        if (H_ice .gt. 10.0) then
+            ! General case (H_ice>10m)
+
+            ! =============================================================
+            ! Ice sheet conditions
+
+            ! Limits at the base of the ice sheet 
+
+            ! Frozen base 
+            if (.not. is_float .and. ((ibase.eq.1).or.(ibase.eq.4) &
+                .or. ((ibase.eq.5).and.(T(nzb).lt.T_pmp(1)))) ) then
+                 
+                if (conductive_bedrock) then
+                    ! With conductive bedrock 
+                    dzi    = H_ice*de*cm/ct(1)
+                    aa(nzb) = -dzm/(dzm+dzi)
+                    bb(nzb) = 1.0
+                    cc(nzb) = -dzi/(dzm+dzi)
+                    rr(nzb) = H_ice*de*Q_b*dzm/ct(1)/(dzm+dzi)
+
+                else
+                    ! Without conductive bedrock 
+                    aa(nzb) = -1.0
+                    bb(nzb) =  1.0
+                    cc(nzb) =  0.0
+                    rr(nzb) = -(Q_geo_now+Q_b)/ct(1)*H_ice*de
+
+                end if
+
+                ibase = 1
+                
+            else
+                ! Temperate ice or shelf ice 
+
+                 if (ibase.eq.5) ibase = 2
+                 ibase = max(ibase,2)
+                 aa(nzb) = 0.0
+                 bb(nzb) = 1.0
+                 cc(nzb) = 0.0
+
+                if (.not. is_float) then
+                    rr(nzb) = T_pmp(1)
+                else
+                    rr(nzb) = Tbmer
+                end if
+
+            endif
+
+            ! Internal ice sheet points
+            dou    = dt/de/de/H_ice/H_ice
+            dah    = dt/H_ice/de
+            ct_haut = 2.0*(ct(1)*ct(2))/(ct(1)+ct(2))
+
+            do k = nzb+1, nzz-1
+
+                ki = k - nzm     ! Ice sheet index 
+
+                dzz = dou/(cp(ki)*ro)
+
+                ! Conductivity as the Harmonic average of the grid points
+                ct_bas  = ct_haut
+                ct_haut = 2.0*(ct(ki)*ct(ki+1))/(ct(ki)+ct(ki+1))
+
+                ! Vertical advection (centered)
+                aa(k) = -dzz*ct_bas-uz(ki)*dah/2.0
+                bb(k) = 1.0+dzz*(ct_bas+ct_haut)
+                cc(k) = -dzz*ct_haut+uz(ki)*dah/2.0
+                rr(k) = T(k)+dt*Q_strn(ki)-dt*advecxy(ki)
+
+            end do
+            
+            ! Prescribe surface temperature as boundary condition
+            T(nzz) = min(0.0,T_srf)
+
+            aa(nzz) = 0.0
+            bb(nzz) = 1.0
+            cc(nzz) = 0.0
+            rr(nzz) = T(nzz)
+            
+            ! =============================================================
+            ! Bedrock conditions and solver
+
+            if (conductive_bedrock) then
+                ! With conductive bedrock 
+
+                do k = 2, nzm
+                    rr(k)=T(k)
+                end do
+                
+                call tridiag(aa,bb,cc,rr,hh,nzz,ifail)
+
+            else
+                ! Without conductive bedrock 
+
+                call tridiag(aa(nzb:nzz),bb(nzb:nzz),cc(nzb:nzz),rr(nzb:nzz),hh(nzb:nzz),nz,ifail)
+
+                ! Prescribe solution for bedrock points (linear with ghf)
+                do k = 1, nzm
+                    hh(k) = hh(nzb)+dzm*(nzm-k+1)*Q_geo_now/cm
+                end do
+
+            endif
+
+            ! Check tridiag results
+            if (ifail .eq. 1) then
+                write(*,*) 'Error in tridiag solver.'
+                write(*,*) 'a, b, c, r, u'
+                do k = 1, nzz
+                    write(*,*)'k = ', k
+                    write(*,*) aa(k),bb(k),cc(k),rr(k),hh(k)
+                end do
+                stop
+            end if
+
+            ! Fill in new temperature solution 
+            T_new = hh 
+            
+            ! Diagnose rate of temperature change at ice base 
+            tbdot = (T_new(1)-T(1))/dt
+
+
+        else if (H_ice .le. 10.0) then
+            ! For very thin ice or no ice:
+            ! To avoid problems with very thin ice layers, prescribe
+            ! a linear profile according to the geothermal heat flux
+            ! Points with no ice are treated the same way 
+
+            write(*,*) "H_ice .le. 10.0 => TO DO !!"
+            stop 
+
+!             if (conductive_bedrock .and. .not. is_float) then
+!                 ! With conductive bedrock 
+
+!                 if (H_ice .gt. 0.0) then
+!                     ! Ice exists, impose the gradient from the bedrock 
+
+!                     dou = (T(nz+1)-T(nz))/dzm*cm
+!                     dou = dou/ct(nz)*de*H_ice
+
+!                     tss = min(0.,T_srf)
+!                     do k = 1, nz
+!                         T_new(k) = tss+dou*(k-1.0)
+!                     end do
+
+!                 else
+!                     ! Ice-free point 
+
+!                     tss = T_srf
+!                     do k = 1, nz 
+!                         T_new(k) = tss
+!                     end do
+!                 end if
+
+!                 ! Perform calculations in the bedrock even if no ice exists
+
+!                 ! Ice base (bedrock surface?)
+!                 aa(nz) = 0.0 
+!                 bb(nz) = 1.0 
+!                 cc(nz) = 0.0 
+!                 rr(nz) = T_new(nz)
+
+!                 ! Internal bedrock layers 
+!                 do k = nz+1, nz+nzm-1
+!                     aa(k) = -ctm
+!                     bb(k) = 1.0+2.0*ctm
+!                     cc(k) = -ctm
+!                     rr(k) = T(k)
+!                 end do
+
+!                 ! Populate table just for solving bedrock     
+!                 do k = 1, nzm+1
+!                     abis(k)=aa(nz-1+k)
+!                     bbis(k)=bb(nz-1+k)
+!                     cbis(k)=cc(nz-1+k)
+!                     rbis(k)=rr(nz-1+k)
+!                 end do
+
+!                 ! Solve bedrock 
+!                 call tridiag(abis,bbis,cbis,rbis,hbis,nzm+1,ifail)
+
+!                 ! Check tridiag solver results
+!                 IF (ifail .eq. 1) then 
+!                     write(*,*)'Error in tridiag solver: bedrock only.'
+!                     write(*,*) 'a, b, c, r, u'
+!                     do k=1,nz+nzm 
+!                         write(*,*)'k = ',k
+!                         write(*,*) abis(k),bbis(k),cbis(k),rbis(k),hbis(k)
+!                     end do
+!                     stop 
+
+!                 end if 
+
+!                 ! Repopulate solution for bedrock points
+!                 do k=1, nzm+1
+!                     hh(nz-1+k) = hbis(k)
+!                 end do
+
+!             else
+!                 ! Without conductive bedrock 
+
+                                         
+!                 if (H_ice .gt. 0.0 .and. .not. is_float) then
+!                     ! Grounded ice sheet point
+
+!                     dou = -Q_geo_now/ct(nz)*de*H_ice
+!                     tss = min(0.0,T_srf)
+!                     do k = 1, nz 
+!                         T_new(k) = tss+dou*(k-1.0)
+!                     end do
+
+!                 else if (H_ice .gt. 0.0 .and. is_float) then
+!                     ! Shelf ice sheet point 
+
+!                     tss = min(0.0,T_srf)
+!                     dou = (tbmer-tss)*de
+!                     do k = 1, nz 
+!                         T_new(k) = tss+dou*(k-1.0)
+!                     end do
+
+!                 else
+!                     ! Ice-free point 
+
+!                     tss = T_srf 
+!                     do k = 1, nz 
+!                         T_new(k) = tss
+!                     end do
+
+!                 end if
+
+!                 ! Calculate temperature in the bedrock as a linear gradient of ghf
+!                 if (.not. is_float) then 
+!                     ! Grounded point 
+
+!                     do k = nz+1, nz+nzm 
+!                         hh(k) = T_new(nz)-dzm*(k-nz)*Q_geo_now/cm
+!                     end do
+
+!                 else
+!                     ! Floating point 
+
+!                     do k = nz+1, nz+nzm 
+!                         hh(K) = Tbmer-dzm*(k-nz)*Q_geo_now/cm
+!                     end do
+                
+!                 end if 
+
+
+!             end if
+            
+
+!             ! Populate new solution in bedrock 
+!             do k = nz+1, nz+nzm 
+!                 T_new(k) = hh(k)
+!             end do
+
+!             ! Diagnose rate of change of temperature at ice base
+!             tbdot = (T_new(nz) - T(nz)) / dt 
+
+!             bmelt = 0.0
+!             ibase = 5
+!             !Q_b   = 0.0     ! ajr: now calculated externally
+
+        end if
+
+        ! Apply limits: less than 3degC / 5 yrs variation and no colder than -70 degC
+        do k = 1, nzz
+
+            if (H_ice .gt. 10.0) then
+
+                tdot = (T_new(k)-T(k))/dt
+
+                if (k .lt. nzz .and. tdot .lt. -3.0) tdot = -3.0
+                if (k .lt. nzz .and. tdot .gt.  3.0) tdot =  3.0
+
+                T(k) = T(k)+tdot
+
+                if (T(k) .lt. -70.0) T(k) = -70.0
+
+            end if
+
+        end do
+
+        ! Limit internal ice temperatures to the pressure melting point 
+        do k = nzb+1, nzz
+
+            if (T(k) .gt. T_pmp(k)) then
+                T(k)  = T_pmp(k)
+                ibase = 2
+            end if
+
+        end do
+
+        ! Ensure ice temperature for very thin/ no ice points is equal
+        ! to surface temperature 
+        if (H_ice .le. 1.0) T(nzb:nzz) = T_srf 
+
+        ! Store solution back in output variables 
+        T_rock = T(1:nzm)
+        T_ice  = T(nzb:nzz)
+
+        return 
+
+    end subroutine calc_icetemp_grisli_column_up 
+
     subroutine calc_icetemp_grisli_column_dwn(ibase,T_ice,T_rock,T_pmp,cp,ct,uz,Q_strn,advecxy,Q_b, &
                                             Q_geo,T_srf,H_ice,H_w,is_float,dt)
         ! GRISLI solver for thermodynamics for a given column of ice 
@@ -555,10 +990,10 @@ contains
         real(prec), intent(IN)    :: dt 
 
         ! Local variables 
-        integer :: nz, nzr  
+        integer :: nz, nzm  
 
         nz  = size(T_ice) 
-        nzr = size(T_rock)
+        nzm = size(T_rock)
 
         if (.not. is_float .and. H_ice .gt. 10.0 .and. ibase .ne. 1) then 
 
@@ -566,7 +1001,7 @@ contains
                 ! With conductive bedrock
 
                 bmelt = (ct(1)*(T_ice(2)-T_ice(1))/de/H_ice &
-                        - cm*(T_ice(1)-T_rock(nzr))/dzm+Q_b)/ro/cl
+                        - cm*(T_ice(1)-T_rock(nzm))/dzm+Q_b)/ro/cl
 
             else
                 ! Without conductive bedrock 
