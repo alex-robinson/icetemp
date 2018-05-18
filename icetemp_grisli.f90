@@ -80,7 +80,7 @@ contains
 
         ! Coefficients for sea temperature from Jenkins (1991)
         acof1   = -0.0575
-        bcof1   = 0.0901
+        bcof1   =  0.0901
         ccof1   = 7.61e-4
         s0mer   = 34.75
 
@@ -132,25 +132,46 @@ contains
         call bmelt_grounded_column_up(bmelt,ibase,T_ice,T_rock,ct,Q_b,H_ice,H_w, &
                                       Q_geo_now,is_float,de,dzm,cm,ro,cl,dt)
 
-        ! Boundary conditions at the base of the bedrock 
-        aa(1) = -1.0
-        bb(1) =  1.0
-        cc(1) =  0.0
-        rr(1) = dzm*Q_geo_now/cm
-    
-        ! Invariant conditions within the bedrock 
-        do k= 2, nzm
-            aa(k) = -ctm
-            bb(k) = 1.0+2.0*ctm
-            cc(k) = -ctm
-        end do
+
+        ! Bedrock conditions ===========
+
+        if (conductive_bedrock) then 
+            ! With conductive bedrock 
+
+            ! Boundary conditions at the base of the bedrock 
+            aa(1) = -1.0
+            bb(1) =  1.0
+            cc(1) =  0.0
+            rr(1) = dzm*Q_geo_now/cm
+            
+            ! Internal bedrock points 
+            do k = 2, nzm
+                aa(k) = -ctm
+                bb(k) = 1.0+2.0*ctm
+                cc(k) = -ctm
+                rr(k) = T(k)
+            end do
+            
+        else 
+            ! Without conductive bedrock: fill in bedrock solution 
+
+            ! Prescribe solution for bedrock points:
+            ! Calculate temperature in the bedrock as a linear gradient of ghf
+            ! Note: Using T(nzb) from the previous timestep for simplicity
+            do k = 1, nzm
+                aa(k) = 0.0 
+                bb(k) = 1.0 
+                cc(k) = 0.0 
+                rr(k) = T(nzb)+dzm*(nzm-k+1)*Q_geo_now/cm
+            end do
+            
+        end if 
+
+        ! Ice sheet conditions ===========
 
         if (H_ice .gt. 10.0) then
             ! General case (H_ice>10m)
-
-            ! =============================================================
-            ! Ice sheet conditions
-
+            
             ! Limits at the base of the ice sheet 
 
             ! Frozen base 
@@ -163,7 +184,7 @@ contains
                     aa(nzb) = -dzm/(dzm+dzi)
                     bb(nzb) = 1.0
                     cc(nzb) = -dzi/(dzm+dzi)
-                    rr(nzb) = H_ice*de*Q_b*dzm/ct(1)/(dzm+dzi)
+                    rr(nzb) = H_ice*de*Q_b/ct(1)*dzm/(dzm+dzi)
 
                 else
                     ! Without conductive bedrock 
@@ -181,6 +202,7 @@ contains
 
                  if (ibase.eq.5) ibase = 2
                  ibase = max(ibase,2)
+
                  aa(nzb) = 0.0
                  bb(nzb) = 1.0
                  cc(nzb) = 0.0
@@ -194,6 +216,7 @@ contains
             endif
 
             ! Internal ice sheet points
+        
             dou    = dt/de/de/H_ice/H_ice
             dah    = dt/H_ice/de
             ct_haut = 2.0*(ct(1)*ct(2))/(ct(1)+ct(2))
@@ -217,6 +240,7 @@ contains
             end do
             
             ! Prescribe surface temperature as boundary condition
+
             T(nzz)  = min(0.0,T_srf)
 
             aa(nzz) = 0.0
@@ -224,191 +248,83 @@ contains
             cc(nzz) = 0.0
             rr(nzz) = T(nzz)
             
-            ! =============================================================
-            ! Bedrock conditions and solver
+        else 
+            ! Thin or no ice (H_ice<=10m)
 
-            if (conductive_bedrock) then
-                ! With conductive bedrock 
+            if (H_ice .gt. 0.0) then
+                ! Ice exists, impose the gradient from the bedrock 
 
-                do k = 2, nzm
-                    rr(k)=T(k)
-                end do
+                ! Impose surface temperature at the surface
+                tss = min(0.0,T_srf)
+
+                if (.not. is_float .and. conductive_bedrock) then 
+                    ! Grounded point with conductive bedrock 
+
+                    ! Slope is based on gradient between bedrock and ice point
+                    dou = ( (T(nzm)-T(nzb))/dzm*cm) / ct(1)*de*H_ice
+
+                else if (.not. is_float) then 
+                    ! Grounded point 
+
+                    ! Slope is based on geothermal heat flux directly 
+                    dou = Q_geo_now/ct(1)*de*H_ice
                 
-                call tridiag(aa,bb,cc,rr,hh,nzz,ifail)
+                else 
+                    ! Floating point 
 
+                    ! Slope is gradient between surface and ocean temperature
+                    dou = (tbmer-tss)*de
+                     
+                end if 
+
+                ! Interpolate intermediate points
+                do k = nzb, nzz 
+                    aa(k) = 0.0
+                    bb(k) = 1.0 
+                    cc(k) = 0.0 
+                    rr(k) = tss+dou*(nzz-k)
+                end do
+                    
             else
-                ! Without conductive bedrock 
+                ! Ice-free point
 
-                call tridiag(aa(nzb:nzz),bb(nzb:nzz),cc(nzb:nzz),rr(nzb:nzz),hh(nzb:nzz),nz,ifail)
+                aa(nzb:nzz) = 0.0
+                bb(nzb:nzz) = 1.0 
+                cc(nzb:nzz) = 0.0
 
-                ! Prescribe solution for bedrock points (linear with ghf)
-                do k = 1, nzm
-                    hh(k) = hh(nzb)+dzm*(nzm-k+1)*Q_geo_now/cm
-                end do
+                if (is_float) then 
+                    rr(nzb:nzz) = tbmer
+                else 
+                    rr(nzb:nzz) = T_srf
+                end if 
 
-            endif
-
-            ! Check tridiag results
-            if (ifail .eq. 1) then
-                write(*,*) 'Error in tridiag solver.'
-                write(*,*) 'a, b, c, r, u'
-                do k = 1, nzz
-                    write(*,*)'k = ', k
-                    write(*,*) aa(k),bb(k),cc(k),rr(k),hh(k)
-                end do
-                stop
             end if
 
-            ! Fill in new temperature solution 
-            T_new = hh 
-            
-            ! Diagnose rate of temperature change at ice base 
-            tbdot = (T_new(1)-T(1))/dt
+        end if 
 
+        ! Solve temperature equation 
+        ! =============================================================
 
-        else if (H_ice .le. 10.0) then
-            ! For very thin ice or no ice:
-            ! To avoid problems with very thin ice layers, prescribe
-            ! a linear profile according to the geothermal heat flux
-            ! Points with no ice are treated the same way 
+        call tridiag(aa,bb,cc,rr,hh,nzz,ifail)
 
-            write(*,*) "H_ice .le. 10.0 => TO DO !!"
-            stop 
-
-!             if (conductive_bedrock .and. .not. is_float) then
-!                 ! With conductive bedrock 
-
-!                 if (H_ice .gt. 0.0) then
-!                     ! Ice exists, impose the gradient from the bedrock 
-
-!                     dou = (T(nz+1)-T(nz))/dzm*cm
-!                     dou = dou/ct(nz)*de*H_ice
-
-!                     tss = min(0.,T_srf)
-!                     do k = 1, nz
-!                         T_new(k) = tss+dou*(k-1.0)
-!                     end do
-
-!                 else
-!                     ! Ice-free point 
-
-!                     tss = T_srf
-!                     do k = 1, nz 
-!                         T_new(k) = tss
-!                     end do
-!                 end if
-
-!                 ! Perform calculations in the bedrock even if no ice exists
-
-!                 ! Ice base (bedrock surface?)
-!                 aa(nz) = 0.0 
-!                 bb(nz) = 1.0 
-!                 cc(nz) = 0.0 
-!                 rr(nz) = T_new(nz)
-
-!                 ! Internal bedrock layers 
-!                 do k = nz+1, nz+nzm-1
-!                     aa(k) = -ctm
-!                     bb(k) = 1.0+2.0*ctm
-!                     cc(k) = -ctm
-!                     rr(k) = T(k)
-!                 end do
-
-!                 ! Populate table just for solving bedrock     
-!                 do k = 1, nzm+1
-!                     abis(k)=aa(nz-1+k)
-!                     bbis(k)=bb(nz-1+k)
-!                     cbis(k)=cc(nz-1+k)
-!                     rbis(k)=rr(nz-1+k)
-!                 end do
-
-!                 ! Solve bedrock 
-!                 call tridiag(abis,bbis,cbis,rbis,hbis,nzm+1,ifail)
-
-!                 ! Check tridiag solver results
-!                 IF (ifail .eq. 1) then 
-!                     write(*,*)'Error in tridiag solver: bedrock only.'
-!                     write(*,*) 'a, b, c, r, u'
-!                     do k=1,nz+nzm 
-!                         write(*,*)'k = ',k
-!                         write(*,*) abis(k),bbis(k),cbis(k),rbis(k),hbis(k)
-!                     end do
-!                     stop 
-
-!                 end if 
-
-!                 ! Repopulate solution for bedrock points
-!                 do k=1, nzm+1
-!                     hh(nz-1+k) = hbis(k)
-!                 end do
-
-!             else
-!                 ! Without conductive bedrock 
-
-                                         
-!                 if (H_ice .gt. 0.0 .and. .not. is_float) then
-!                     ! Grounded ice sheet point
-
-!                     dou = -Q_geo_now/ct(nz)*de*H_ice
-!                     tss = min(0.0,T_srf)
-!                     do k = 1, nz 
-!                         T_new(k) = tss+dou*(k-1.0)
-!                     end do
-
-!                 else if (H_ice .gt. 0.0 .and. is_float) then
-!                     ! Shelf ice sheet point 
-
-!                     tss = min(0.0,T_srf)
-!                     dou = (tbmer-tss)*de
-!                     do k = 1, nz 
-!                         T_new(k) = tss+dou*(k-1.0)
-!                     end do
-
-!                 else
-!                     ! Ice-free point 
-
-!                     tss = T_srf 
-!                     do k = 1, nz 
-!                         T_new(k) = tss
-!                     end do
-
-!                 end if
-
-!                 ! Calculate temperature in the bedrock as a linear gradient of ghf
-!                 if (.not. is_float) then 
-!                     ! Grounded point 
-
-!                     do k = nz+1, nz+nzm 
-!                         hh(k) = T_new(nz)-dzm*(k-nz)*Q_geo_now/cm
-!                     end do
-
-!                 else
-!                     ! Floating point 
-
-!                     do k = nz+1, nz+nzm 
-!                         hh(K) = Tbmer-dzm*(k-nz)*Q_geo_now/cm
-!                     end do
-                
-!                 end if 
-
-
-!             end if
-            
-
-!             ! Populate new solution in bedrock 
-!             do k = nz+1, nz+nzm 
-!                 T_new(k) = hh(k)
-!             end do
-
-!             ! Diagnose rate of change of temperature at ice base
-!             tbdot = (T_new(nz) - T(nz)) / dt 
-
-!             bmelt = 0.0
-!             ibase = 5
-!             !Q_b   = 0.0     ! ajr: now calculated externally
-
+        ! Check tridiag results
+        if (ifail .eq. 1) then
+            write(*,*) 'Error in tridiag solver.'
+            write(*,*) 'a, b, c, r, u'
+            do k = 1, nzz
+                write(*,*)'k = ', k
+                write(*,*) aa(k),bb(k),cc(k),rr(k),hh(k)
+            end do
+            stop
         end if
 
+        ! Fill in new temperature solution 
+        T_new = hh 
+        
+        ! Diagnose rate of temperature change at ice base 
+        tbdot = (T_new(1)-T(1))/dt
+
+        ! Populate T vector
         ! Apply limits: less than 3degC / 5 yrs variation and no colder than -70 degC
         do k = 1, nzz
 
@@ -419,31 +335,26 @@ contains
                 if (k .lt. nzz .and. tdot .lt. -3.0) tdot = -3.0
                 if (k .lt. nzz .and. tdot .gt.  3.0) tdot =  3.0
 
-                T(k) = T(k)+tdot
+                T_new(k) = T(k) + tdot
 
-                if (T(k) .lt. -70.0) T(k) = -70.0
+                if (T_new(k) .lt. -70.0) T_new(k) = -70.0
 
             end if
 
         end do
 
-        ! Limit internal ice temperatures to the pressure melting point 
-        do k = nzb+1, nzz
-
-            if (T(k) .gt. T_pmp(k)) then
-                T(k)  = T_pmp(k)
-                ibase = 2
-            end if
-
+        ! Limit ice temperatures to the pressure melting point 
+        do k = nzb, nzz
+            ki = k - nzm 
+            if (T_new(k) .gt. T_pmp(ki)) then 
+                T_new(k) = T_pmp(ki)
+                ibase    = 2 
+            end if 
         end do
-
-        ! Ensure ice temperature for very thin/ no ice points is equal
-        ! to surface temperature 
-        if (H_ice .le. 1.0) T(nzb:nzz) = T_srf 
 
         ! Store solution back in output variables 
-        T_rock = T(1:nzm)
-        T_ice  = T(nzb:nzz)
+        T_rock = T_new(1:nzm)
+        T_ice  = T_new(nzb:nzz)
 
         return 
 
