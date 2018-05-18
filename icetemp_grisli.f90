@@ -1,7 +1,7 @@
 module icetemp_grisli
     ! Wrapping the original grisli icetemp solution for yelmo 
 
-    use defs, only : prec, pi, g, sec_year, T0, rho_ice, rho_sw
+    use defs, only : prec, pi, g, sec_year, T0, rho_ice, rho_sw, rho_w 
     use solver_tridiagonal, only : tridiag 
 
     implicit none
@@ -14,15 +14,14 @@ module icetemp_grisli
     public :: calc_icetemp_grisli_column_up 
 contains 
     
-    subroutine calc_icetemp_grisli_column_up(ibase,T_ice,T_rock,T_pmp,cp,ct,uz,Q_strn,advecxy,Q_b, &
-                                            Q_geo,T_srf,H_ice,H_w,is_float,sigma,dt)
+    subroutine calc_icetemp_grisli_column_up(T_ice,T_rock,T_pmp,cp,ct,uz,Q_strn,advecxy,Q_b, &
+                                            Q_geo,T_srf,H_ice,H_w,bmb,is_float,sigma,dt)
         ! GRISLI solver for thermodynamics for a given column of ice 
         ! Note sigma=height, k=1 base, k=nz surface 
         ! Note T_ice, T_pmp in [degC], not [K]
 
         implicit none 
 
-        integer,    intent(INOUT) :: ibase      ! [--]   State of base (temperate, frozen, etc)
         real(prec), intent(OUT) :: T_ice(:)     ! [degC] Ice column temperature
         real(prec), intent(OUT) :: T_rock(:)    ! [degC] Bedrock column temperature
         real(prec), intent(IN)  :: T_pmp(:)     ! [degC] Pressure melting point temp.
@@ -36,6 +35,7 @@ contains
         real(prec), intent(IN)  :: T_srf        ! [degC] Surface temperature 
         real(prec), intent(IN)  :: H_ice        ! [m] Ice thickness 
         real(prec), intent(IN)  :: H_w          ! [m] Basal water layer thickness 
+        real(prec), intent(IN)  :: bmb          ! [m a-1] Basal mass balance (melting is negative)
         logical,    intent(IN)  :: is_float     ! [--] Floating point or grounded?
         real(prec), intent(IN)  :: sigma(:)     ! [--] Vertical sigma coordinates (sigma==height)
         real(prec), intent(IN)  :: dt           ! [a] Time step 
@@ -50,7 +50,8 @@ contains
         real(prec) :: acof1, bcof1, ccof1, s0mer, tbmer 
         real(prec) :: tbdot, tdot, tss
         real(prec) :: bmelt
-        real(prec) :: Q_geo_now   
+        real(prec) :: Q_geo_now
+        real(prec) :: H_w_gen_now    
         integer    :: ifail 
 
         real(prec), allocatable :: aa(:), bb(:), cc(:), rr(:), hh(:) 
@@ -128,10 +129,13 @@ contains
             tbmer = 0.0 
         end if 
 
-        ! Diagnose basal melt rate and basal state (temperate, frozen, etc.)
-        call bmelt_grounded_column_up(bmelt,ibase,T_ice,T_rock,ct,Q_b,H_ice,H_w, &
-                                      Q_geo_now,is_float,de,dzm,cm,ro,cl,dt)
+!         ! Diagnose basal melt rate and basal state (temperate, frozen, etc.)
+!         call bmelt_grounded_column_up(bmelt,ibase,T_ice,T_rock,ct,Q_b,H_ice,H_w, &
+!                                       Q_geo_now,is_float,de,dzm,cm,ro,cl,dt)
 
+
+        ! Determine generated/lost water total for this timestep [m]
+        H_w_gen_now = -(bmb*(rho_w/rho_ice))*dt 
 
         ! Bedrock conditions ===========
 
@@ -175,9 +179,13 @@ contains
             ! Limits at the base of the ice sheet 
 
             ! Frozen base 
-            if (.not. is_float .and. ((ibase.eq.1).or.(ibase.eq.4) &
-                .or. ((ibase.eq.5).and.(T(nzb).lt.T_pmp(1)))) ) then
-                 
+!             if (.not. is_float .and. ((ibase.eq.1).or.(ibase.eq.4) &
+!                 .or. ((ibase.eq.5).and.(T(nzb).lt.T_pmp(1)))) ) then
+            
+            if ( (.not. is_float) .and.  &
+                 (T(nzb).lt.T_pmp(1) .or. H_w+H_w_gen_now .lt. 0.0_prec) ) then 
+                ! Frozen, grounded bed; or about to become so with removal of basal water
+
                 if (conductive_bedrock) then
                     ! With conductive bedrock 
                     dzi    = H_ice*de*cm/ct(1)
@@ -195,17 +203,12 @@ contains
 
                 end if
 
-                ibase = 1
-                
             else
                 ! Temperate ice or shelf ice 
 
-                 if (ibase.eq.5) ibase = 2
-                 ibase = max(ibase,2)
-
-                 aa(nzb) = 0.0
-                 bb(nzb) = 1.0
-                 cc(nzb) = 0.0
+                aa(nzb) = 0.0
+                bb(nzb) = 1.0
+                cc(nzb) = 0.0
 
                 if (.not. is_float) then
                     rr(nzb) = T_pmp(1)
@@ -213,7 +216,7 @@ contains
                     rr(nzb) = Tbmer
                 end if
 
-            endif
+            end if
 
             ! Internal ice sheet points
         
@@ -346,10 +349,7 @@ contains
         ! Limit ice temperatures to the pressure melting point 
         do k = nzb, nzz
             ki = k - nzm 
-            if (T_new(k) .gt. T_pmp(ki)) then 
-                T_new(k) = T_pmp(ki)
-                ibase    = 2 
-            end if 
+            if (T_new(k) .gt. T_pmp(ki)) T_new(k) = T_pmp(ki)
         end do
 
         ! Store solution back in output variables 
