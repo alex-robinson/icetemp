@@ -167,10 +167,10 @@ contains
 
                 else
                     ! Without conductive bedrock 
-                    aa(nzb) = -1.0
+                    aa(nzb) =  0.0
                     bb(nzb) =  1.0
-                    cc(nzb) =  0.0
-                    rr(nzb) = -(Q_geo_now+Q_b)/ct(1)*H_ice*de
+                    cc(nzb) = -1.0
+                    rr(nzb) = +(Q_geo_now+Q_b)/ct(1)*H_ice*de
 
                 end if
 
@@ -217,7 +217,7 @@ contains
             end do
             
             ! Prescribe surface temperature as boundary condition
-            T(nzz) = min(0.0,T_srf)
+            T(nzz)  = min(0.0,T_srf)
 
             aa(nzz) = 0.0
             bb(nzz) = 1.0
