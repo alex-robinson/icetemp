@@ -118,10 +118,8 @@ program test_icetemp
 
     ! Also calculate the robin solution for comparison 
     robin = ice1  
-    robin%up%T_ice = my_robin_solution(real(robin%up%sigma,dp),real(robin%up%T_pmp,dp),real(robin%up%kt,dp),real(robin%up%cp,dp), &
-                                       real(rho_ice,dp), &
-                                       real(robin%H_ice,dp),real(robin%T_srf,dp),real(robin%smb,dp), &
-                                       real(robin%Q_geo,dp),robin%is_float)
+    robin%up%T_ice = my_robin_solution(robin%up%sigma,robin%up%T_pmp,robin%up%kt,robin%up%cp,rho_ice, &
+                                       robin%H_ice,robin%T_srf,robin%smb,robin%Q_geo,robin%is_float)
     
     ! Write Robin solution for comparison 
     file1D = "robin.nc"
