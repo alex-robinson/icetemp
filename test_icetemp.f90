@@ -52,9 +52,9 @@ program test_icetemp
     ! ===============================================================
     ! User options 
 
-    t_start = 0.0     ! [yr]
+    t_start = 0.0       ! [yr]
     t_end   = 200000.0  ! [yr]
-    dt      = 5.0     ! [yr]
+    dt      = 5.0       ! [yr]
 
     file1D  = "test.nc" 
     dt_out  = 10000.0      ! [yr] 
@@ -105,7 +105,7 @@ program test_icetemp
             call write_step(ice1,ice1%up,filename=file1D,time=time)
         end if 
 
-        if (mod(time,20.0)==0) then
+        if (mod(time,50.0)==0) then
             write(*,"(a,f14.4)") "time = ", time
         end if 
 

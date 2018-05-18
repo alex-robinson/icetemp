@@ -170,7 +170,7 @@ contains
                     aa(nzb) =  0.0
                     bb(nzb) =  1.0
                     cc(nzb) = -1.0
-                    rr(nzb) = +(Q_geo_now+Q_b)/ct(1)*H_ice*de
+                    rr(nzb) = (Q_geo_now+Q_b)/ct(1)*H_ice*de
 
                 end if
 
