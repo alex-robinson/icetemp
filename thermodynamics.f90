@@ -444,10 +444,10 @@ contains
             end do 
 
         else if (.not. is_float .and. H_ice .gt. H_ice_min) then 
-            ! Impose linear profile 
+            ! Impose linear profile with temperate base
 
             T_ice(nz) = T_srf
-            T_ice(1)  = T_pmp(1) - 10.0 
+            T_ice(1)  = T_pmp(1)
 
             ! Intermediate layers are linearly interpolated 
             do k = 2, nz-1 

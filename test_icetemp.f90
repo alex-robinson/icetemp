@@ -97,9 +97,9 @@ program test_icetemp
 !         call icesheet_dwn_to_up(ice1%up,ice1%dwn)
             
 
-        ! Test with temp-dependent thermal properties
-        ice1%up%cp      = calc_specific_heat_capacity(ice1%up%T_ice+T0)
-        ice1%up%kt      = calc_thermal_conductivity(ice1%up%T_ice+T0) 
+!         ! Test with temp-dependent thermal properties
+!         ice1%up%cp      = calc_specific_heat_capacity(ice1%up%T_ice+T0)
+!         ice1%up%kt      = calc_thermal_conductivity(ice1%up%T_ice+T0) 
         
         call calc_icetemp_grisli_column_up(ice1%up%T_ice,ice1%up%T_rock,ice1%up%T_pmp, &
                                            ice1%up%cp,ice1%up%kt,ice1%up%uz,ice1%up%Q_strn,ice1%up%advecxy, &
@@ -118,8 +118,10 @@ program test_icetemp
 
     ! Also calculate the robin solution for comparison 
     robin = ice1  
-    robin%up%T_ice = my_robin_solution(robin%up%sigma,robin%up%T_pmp,robin%up%kt,robin%up%cp,rho_ice, &
-                                       robin%H_ice,robin%T_srf,robin%smb,robin%Q_geo,robin%is_float)
+    robin%up%T_ice = my_robin_solution(real(robin%up%sigma,dp),real(robin%up%T_pmp,dp),real(robin%up%kt,dp),real(robin%up%cp,dp), &
+                                       real(rho_ice,dp), &
+                                       real(robin%H_ice,dp),real(robin%T_srf,dp),real(robin%smb,dp), &
+                                       real(robin%Q_geo,dp),robin%is_float)
     
     ! Write Robin solution for comparison 
     file1D = "robin.nc"
