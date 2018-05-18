@@ -242,10 +242,11 @@ contains
         ice%up%sigma = 0.0  
         do k = 1, nz 
             ice%up%sigma(k) = real(k-1,prec) / real(nz-1,prec)
+            write(*,*) ice%up%sigma(k)
         end do 
 
-        ice%up%sigma = ice%up%sigma**2 
-
+        ice%up%sigma = ice%up%sigma**2
+        
         ! Initialize remaining vectors to zero 
         ice%up%T_ice   = 0.0 
         ice%up%T_rock  = 0.0

@@ -46,6 +46,7 @@ contains
         real(prec) :: dzm, de, da, ro, rom, romg, row, cl, cm, cpm
         real(prec) :: dzz, dah, dou, dzi  
         real(prec) :: ct_bas, ct_haut 
+        real(prec) :: dah_bas, dzz_bas, dah_haut, dzz_haut
         real(prec) :: ctm 
         real(prec) :: acof1, bcof1, ccof1, s0mer, tbmer 
         real(prec) :: tbdot, tdot, tss, tbb
@@ -195,25 +196,36 @@ contains
 
             ! Internal ice sheet points
             
-            ct_haut = 2.0*(ct(1)*ct(2))/(ct(1)+ct(2))
+!             ct_haut = 2.0*(ct(1)*ct(2))/(ct(1)+ct(2))
+            ct_haut = calc_harmonic_mean_wtd(ct(1),ct(2),sigma(2)-sigma(1),sigma(3)-sigma(2))
 
             do k = nzb+1, nzz-1
 
                 ki = k - nzm     ! Ice sheet index 
 
-                de  = (sigma(ki+1)-sigma(ki))*H_ice 
-                dah = dt/de
-                dou = dt/de/de
-                dzz = dou/(cp(ki)*ro)
+                de      = H_ice*(sigma(ki)-sigma(ki-1))
+                dah_bas = dt/de
+                dzz_bas = dt/(de*de) * 1.0/(cp(ki)*ro)
+
+                de       = H_ice*(sigma(ki+1)-sigma(ki))
+                dah_haut = dt/de
+                dzz_haut = dt/(de*de) * 1.0/(cp(ki)*ro)
+
+!                 de  = H_ice*(sigma(ki+1)-sigma(ki)) 
+!                 dah = dt/de
+!                 dzz = dt/(de*de) * 1.0/(cp(ki)*ro)
+                dzz = ((sigma(ki)-sigma(ki-1))*dzz_bas+(sigma(ki+1)-sigma(ki))*dzz_haut) &
+                        / (sigma(ki+1)-sigma(ki-1))
 
                 ! Conductivity as the Harmonic average of the grid points
                 ct_bas  = ct_haut
-                ct_haut = 2.0*(ct(ki)*ct(ki+1))/(ct(ki)+ct(ki+1))
-
+!                 ct_haut = 2.0*(ct(ki)*ct(ki+1))/(ct(ki)+ct(ki+1))
+                ct_haut = calc_harmonic_mean_wtd(ct(ki),ct(ki+1),sigma(ki)-sigma(ki-1),sigma(ki+1)-sigma(ki))
+            
                 ! Vertical advection (centered)
-                aa(k) = -dzz*ct_bas-uz(ki)*dah/2.0
+                aa(k) = -dzz_bas*ct_bas-uz(ki)*dah_bas/2.0
                 bb(k) = 1.0+dzz*(ct_bas+ct_haut)
-                cc(k) = -dzz*ct_haut+uz(ki)*dah/2.0
+                cc(k) = -dzz_haut*ct_haut+uz(ki)*dah_haut/2.0
                 rr(k) = T(k)+dt*Q_strn(ki)-dt*advecxy(ki)
 
             end do
@@ -304,9 +316,6 @@ contains
         ! Fill in new temperature solution 
         T_new = hh 
         
-        ! Diagnose rate of temperature change at ice base 
-        tbdot = (T_new(1)-T(1))/dt
-
         ! Populate T vector
         ! Apply limits: less than 3degC / 5 yrs variation and no colder than -70 degC
         do k = 1, nzz
@@ -325,6 +334,9 @@ contains
             end if
 
         end do
+
+        ! Diagnose rate of temperature change at ice base 
+        tbdot = (T_new(nzb)-T(nzb))/dt
 
         ! Limit ice temperatures to the pressure melting point 
         do k = nzb, nzz
@@ -856,90 +868,35 @@ contains
 
     end subroutine bmelt_grounded_column_dwn 
 
-    subroutine bmelt_grounded_column_up(bmelt,ibase,T_ice,T_rock,ct,Q_b,H_ice,H_w,Q_geo_now,is_float,de,dzm,cm,ro,cl,dt)
-        ! Diagnose the basal melting rate and the state of the basal 
-        ! ice (temperate, frozen, etc), for internal use in calc_icetemp_grisli_column
-        ! Note: for upward sigma coordinates (sigma=height, k=1 base, kz surface)
-        
+    function calc_harmonic_mean(k1,k2) result(kmean)
+        ! From wikipedia:
+        ! https://en.wikipedia.org/wiki/Harmonic_mean
+
         implicit none 
 
-        real(prec), intent(OUT)   :: bmelt 
-        integer,    intent(INOUT) :: ibase 
-        real(prec), intent(IN)    :: T_ice(:) 
-        real(prec), intent(IN)    :: T_rock(:) 
-        real(prec), intent(IN)    :: ct(:) 
-        real(prec), intent(IN)    :: Q_b
-        real(prec), intent(IN)    :: H_ice 
-        real(prec), intent(IN)    :: H_w 
-        real(prec), intent(IN)    :: Q_geo_now    ! [J a-1 m-2]
-        logical,    intent(IN)    :: is_float 
-        real(prec), intent(IN)    :: de
-        real(prec), intent(IN)    :: dzm 
-        real(prec), intent(IN)    :: cm 
-        real(prec), intent(IN)    :: ro 
-        real(prec), intent(IN)    :: cl 
-        real(prec), intent(IN)    :: dt 
+        real(prec), intent(IN) :: k1, k2
+        real(prec) :: kmean 
 
-        ! Local variables 
-        integer :: nz, nzm  
+        kmean = 2.0*(k1*k2) / (k1+k2)
 
-        nz  = size(T_ice) 
-        nzm = size(T_rock)
+        return 
 
-        if (.not. is_float .and. H_ice .gt. 10.0 .and. ibase .ne. 1) then 
+    end function calc_harmonic_mean
+    
+    function calc_harmonic_mean_wtd(k1,k2,w1,w2) result(kmean)
+        ! From wikipedia:
+        ! https://en.wikipedia.org/wiki/Harmonic_mean#Weighted_harmonic_mean
 
-            if (conductive_bedrock) then
-                ! With conductive bedrock
+        implicit none 
 
-                bmelt = (ct(1)*(T_ice(2)-T_ice(1))/de/H_ice &
-                        - cm*(T_ice(1)-T_rock(nzm))/dzm+Q_b)/ro/cl
+        real(prec), intent(IN) :: k1, k2, w1, w2 
+        real(prec) :: kmean 
 
-            else
-                ! Without conductive bedrock 
+        kmean = (w1+w2) / (w1/k1 + w2/k2)
 
-                bmelt = (ct(1)*(T_ice(2)-T_ice(1))/de/H_ice &
-                        + (Q_b-Q_geo_now))/ro/cl
-            
-            end if
+        return 
 
+    end function calc_harmonic_mean_wtd
 
-            if (bmelt .ge. 0.0) then
-                ! Basal melt present, temperate base
-                
-                ibase = 2
-                                   
-            else
-                ! Refreezing 
-
-                if (H_w .gt. -bmelt*dt) then
-                    ! If basal water will remain after refreezing, still temperate 
-                    
-                    ibase=2
-
-                else if (ibase .eq. 3) then
-                    ! Point became frozen now  
-                    ibase = 4
-                    bmelt = 0.0
-                    !H_w   = 0.0    ! ajr: now handled externally 
-
-                else if (H_w .le. -bmelt*dt) then
-                    ! Refreezing, but there is not enough water
-
-                    ibase = 3
-                
-                end if
-
-            end if
-
-        else
-            ! Thin or no ice 
-
-            bmelt = 0.0
-
-        end if 
-
-        return
-
-    end subroutine bmelt_grounded_column_up 
 end module icetemp_grisli 
 
