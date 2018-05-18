@@ -48,14 +48,13 @@ contains
         real(prec) :: ct_bas, ct_haut 
         real(prec) :: ctm 
         real(prec) :: acof1, bcof1, ccof1, s0mer, tbmer 
-        real(prec) :: tbdot, tdot, tss
+        real(prec) :: tbdot, tdot, tss, tbb
         real(prec) :: bmelt
         real(prec) :: Q_geo_now
         real(prec) :: H_w_gen_now    
         integer    :: ifail 
 
         real(prec), allocatable :: aa(:), bb(:), cc(:), rr(:), hh(:) 
-        real(prec), allocatable :: abis(:), bbis(:), cbis(:), rbis(:), hbis(:)  
         real(prec), allocatable :: T(:), T_new(:) 
 
         ! Store local vector sizes 
@@ -69,7 +68,6 @@ contains
         ! Some parameters defined here for now, for testing 
         ! (these will move to a parameter file later)
         dzm     = 600.0            ! [m] Bedrock step height 
-        de      = 1.0/(nz-1)       ! vertical step in ice
         da      = 4.0e7            ! Mantle diffusion
         ro      = rho_ice          ! [kg m-3] Ice density 
         rom     = 3300.0           ! [kg m-3] Density of mantle
@@ -93,8 +91,6 @@ contains
 
         ! Allocate local variables 
         allocate(aa(nzz),bb(nzz),cc(nzz),rr(nzz),hh(nzz))
-        allocate(abis(nzz),bbis(nzz),cbis(nzz),rbis(nzz),hbis(nzz))
-
         allocate(T(nzz),T_new(nzz))
 
         ! Populate local temperature column (ice+rock) 
@@ -104,35 +100,12 @@ contains
         ! Populate new solution to be safe 
         T_new = T 
 
-        ! NOTE: Thermal properties are now calculated outside of the routine
-        ! The below notes are included for reference. Also now cp is expected
-        ! in units of [J kg-1 K-1] to be consistent with literature, while
-        ! grisli originally used units cp*ro with units of [J m-3 K-1]
-
-        ! GRISLI THERMAL PROPERTIES ===========================================
-!         ! Calculate thermal properties
-!         do k = 1, nz  
-!             cp(k)    = (2115.3+7.79293*T_ice(k))             ! [J kg-1 K-1]
-!             ct(k)    = 3.1014e8*exp(-0.0057*(T_ice(k)+T0))   ! [J m-1 K-1 a-1] 
-!         end do 
-        ! =====================================================================
-
-        ! EISMINT THERMAL PROPERTIES ==========================================
-!         cp = 2009.0        ! [J kg-1 K-1]
-!         ct = 6.6e7         ! [J m-1 K-1 a-1] 
-        ! =====================================================================
-        
         ! Calculate the sea temperature below ice shelf if point is floating 
         if (is_float) then
             tbmer = acof1*s0mer + bcof1 + ccof1*H_ice*ro/row
         else 
             tbmer = 0.0 
         end if 
-
-!         ! Diagnose basal melt rate and basal state (temperate, frozen, etc.)
-!         call bmelt_grounded_column_up(bmelt,ibase,T_ice,T_rock,ct,Q_b,H_ice,H_w, &
-!                                       Q_geo_now,is_float,de,dzm,cm,ro,cl,dt)
-
 
         ! Determine generated/lost water total for this timestep [m]
         H_w_gen_now = -(bmb*(rho_w/rho_ice))*dt 
@@ -186,20 +159,22 @@ contains
                  (T(nzb).lt.T_pmp(1) .or. H_w+H_w_gen_now .lt. 0.0_prec) ) then 
                 ! Frozen, grounded bed; or about to become so with removal of basal water
 
+                de = (sigma(2)-sigma(1))*H_ice 
+
                 if (conductive_bedrock) then
                     ! With conductive bedrock 
-                    dzi    = H_ice*de*cm/ct(1)
+                    dzi     = de*cm/ct(1)
                     aa(nzb) = -dzm/(dzm+dzi)
                     bb(nzb) = 1.0
                     cc(nzb) = -dzi/(dzm+dzi)
-                    rr(nzb) = H_ice*de*Q_b/ct(1)*dzm/(dzm+dzi)
+                    rr(nzb) = de*Q_b/ct(1)*dzm/(dzm+dzi)
 
                 else
                     ! Without conductive bedrock 
                     aa(nzb) =  0.0
                     bb(nzb) =  1.0
                     cc(nzb) = -1.0
-                    rr(nzb) = (Q_geo_now+Q_b)/ct(1)*H_ice*de
+                    rr(nzb) = (Q_geo_now+Q_b)/ct(1)*de
 
                 end if
 
@@ -219,15 +194,16 @@ contains
             end if
 
             ! Internal ice sheet points
-        
-            dou    = dt/de/de/H_ice/H_ice
-            dah    = dt/H_ice/de
+            
             ct_haut = 2.0*(ct(1)*ct(2))/(ct(1)+ct(2))
 
             do k = nzb+1, nzz-1
 
                 ki = k - nzm     ! Ice sheet index 
 
+                de  = (sigma(ki+1)-sigma(ki))*H_ice 
+                dah = dt/de
+                dou = dt/de/de
                 dzz = dou/(cp(ki)*ro)
 
                 ! Conductivity as the Harmonic average of the grid points
@@ -264,28 +240,32 @@ contains
                     ! Grounded point with conductive bedrock 
 
                     ! Slope is based on gradient between bedrock and ice point
-                    dou = ( (T(nzm)-T(nzb))/dzm*cm) / ct(1)*de*H_ice
+!                     de  = (sigma(2)-sigma(1))*H_ice 
+!                     dou = ( (T(nzm)-T(nzb))/dzm*cm) / ct(1)*de
+!                     tbb = tss+dou*(nz-1)
+                    tbb = T(nzb) 
 
                 else if (.not. is_float) then 
                     ! Grounded point 
 
                     ! Slope is based on geothermal heat flux directly 
-                    dou = Q_geo_now/ct(1)*de*H_ice
-                
+                    tbb = tss + Q_geo_now/ct(1)*H_ice
+
                 else 
                     ! Floating point 
 
-                    ! Slope is gradient between surface and ocean temperature
-                    dou = (tbmer-tss)*de
+                    ! Basal temperature is ocean temperature
+                    tbb = tbmer
                      
                 end if 
 
                 ! Interpolate intermediate points
-                do k = nzb, nzz 
+                do k = nzb, nzz
+                    ki    = nzb-nzm  
                     aa(k) = 0.0
                     bb(k) = 1.0 
                     cc(k) = 0.0 
-                    rr(k) = tss+dou*(nzz-k)
+                    rr(k) = tbb+(tss-tbb)*sigma(ki)
                 end do
                     
             else
