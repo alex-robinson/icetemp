@@ -95,7 +95,12 @@ program test_icetemp
         
 !         ! Transfer info back to ice1%up for writing
 !         call icesheet_dwn_to_up(ice1%up,ice1%dwn)
+            
 
+        ! Test with temp-dependent thermal properties
+        ice1%up%cp      = calc_specific_heat_capacity(ice1%up%T_ice+T0)
+        ice1%up%kt      = calc_thermal_conductivity(ice1%up%T_ice+T0) 
+        
         call calc_icetemp_grisli_column_up(ice1%up%T_ice,ice1%up%T_rock,ice1%up%T_pmp, &
                                            ice1%up%cp,ice1%up%kt,ice1%up%uz,ice1%up%Q_strn,ice1%up%advecxy, &
                                            ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%bmb,ice1%is_float, &
@@ -163,9 +168,10 @@ contains
         ice%is_float = .FALSE.     ! Grounded point 
         ice%ibase    = 1           ! Frozen 
 
+        ! EISMINT1
         ice%up%cp      = 2009.0    ! [J kg-1 K-1]
         ice%up%kt      = 6.67e7    ! [J a-1 m-1 K-1]
-    
+        
         ice%up%Q_strn  = 0.0       ! [] No internal strain heating 
         ice%up%advecxy = 0.0       ! [] No horizontal advection 
 
