@@ -65,7 +65,17 @@ contains
 
         nzb     = nzm + 1          ! Index of ice base in column (ice plus bedrock)
 
-
+        ! Check that sigma is equally spaced
+        de = sigma(2)-sigma(1)
+        do k = 2, nz 
+            dzi = sigma(k)-sigma(k-1)
+            if (abs(de-dzi).gt.1e-2) then 
+                write(*,*) "calc_icetemp:: Error: currently only evenly spaced vertical axis is allowed."
+                write(*,*) "sigma = ", sigma 
+                stop 
+            end if 
+        end do 
+        
         ! Some parameters defined here for now, for testing 
         ! (these will move to a parameter file later)
         dzm     = 600.0            ! [m] Bedrock step height 

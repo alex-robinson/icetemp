@@ -245,7 +245,7 @@ contains
             write(*,*) ice%up%sigma(k)
         end do 
 
-        ice%up%sigma = ice%up%sigma**2
+!         ice%up%sigma = ice%up%sigma**2
         
         ! Initialize remaining vectors to zero 
         ice%up%T_ice   = 0.0 
