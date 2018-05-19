@@ -219,16 +219,36 @@ contains
 
         implicit none
 
-        real(prec), intent(OUT) :: Q_strn(:,:,:)          ! [K a-1] Heat production
+        real(prec), intent(OUT) :: Q_strn(:,:,:)          ! [Pa m a-1 ??] Heat production
+        !type(stress_3D_class), intent(IN) :: strss        ! Stress tensor
+        !type(strain_3D_class), intent(IN) :: strn         ! Strain rate tensor
         real(prec),            intent(IN) :: de(:,:,:)    ! [UNITS?] Effective strain rate 
         real(prec),            intent(IN) :: visc(:,:,:)  ! [UNITS?] Viscosity
-        real(prec),            intent(IN) :: cp(:,:,:)    ! [J kg-1 K-1] Specific heat capacity
+        real(prec),            intent(IN) :: cp(:,:,:)    ! [J/kg/K] Specific heat capacity
         real(prec),            intent(IN) :: rho_ice      ! [kg m-3] Ice density 
 
         ! Local variables
+        integer :: i, j, k, nx, ny, nz 
         real(prec), parameter :: Q_strn_max = 0.1         ! Check this limit!! 
 
-        ! Simple approach:
+        nx = size(Q_strn,1)
+        ny = size(Q_strn,2)
+        nz = size(Q_strn,3)
+
+        ! Note: we use the simpler approach because in the shallow
+        ! model, the stress rate is simply the strain rate squared
+
+        ! Directly from Q_strn = tr(stress*strain)/cp
+        ! (Cuffey and Patterson (2010) pag. 417, eq. 9.30)
+
+!         Q_strn = ( strss%txx*strn%dxx &
+!                  + strss%tyy*strn%dyy &
+!                  + strss%tzz*strn%dzz &    ! this term is not available yet in the code, needs to be calculated
+!              + 2.0*strss%txy*strn%dxy &
+!              + 2.0*strss%txz*strn%dxz &
+!              + 2.0*strss%tyz*strn%dyz ) * 1.0/(cp*rho_ice) 
+
+        ! Simpler approach:
         ! Calculate Q_strn from effective strain rate and viscosity
         ! (Greve and Blatter (2009) eqs. 4.7 and 5.65): 
         !     Q_strn = tr(stress*strn)/cp = tr(2*visc*strn*strn)/cp = 2*visc*tr(strn*strn)/cp = 4*visc*de^2/cp
@@ -242,7 +262,7 @@ contains
         return 
 
     end subroutine calc_strain_heating
-
+    
     subroutine calc_basal_heating(Q_b,Q_strn_b,ux_base,uy_base,taub_acx,taub_acy,f_grnd_acx,f_grnd_acy)
         ! Qb [J a-1 m-2] == [m a-1] * [J m-3]
 
