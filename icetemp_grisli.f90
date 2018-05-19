@@ -3,17 +3,76 @@ module icetemp_grisli
 
     use defs, only : prec, pi, g, sec_year, T0, rho_ice, rho_sw, rho_w 
     use solver_tridiagonal, only : tridiag 
-
+    use thermodynamics, only : calc_advec_horizontal_column
     implicit none
     
     ! Impose parameter choice here for testing conductive bedrock or not
     logical,    parameter :: conductive_bedrock = .FALSE. 
     
     private
+    public :: calc_icetemp_grisli_3D_up
     public :: calc_icetemp_grisli_column_dwn
     public :: calc_icetemp_grisli_column_up 
 contains 
     
+    subroutine calc_icetemp_grisli_3D_up(T_ice,T_rock,T_pmp,cp,ct,ux,uy,uz,Q_strn,Q_b, &
+                                            Q_geo,T_srf,H_ice,H_w,bmb,f_grnd,sigma,dt,dx)
+        ! GRISLI solver for thermodynamics for a given column of ice 
+        ! Note sigma=height, k=1 base, k=nz surface 
+        ! Note T_ice, T_pmp in [degC], not [K]
+
+        implicit none 
+
+        real(prec), intent(OUT) :: T_ice(:,:,:)     ! [degC] Ice column temperature
+        real(prec), intent(OUT) :: T_rock(:,:,:)    ! [degC] Bedrock column temperature
+        real(prec), intent(IN)  :: T_pmp(:,:,:)     ! [degC] Pressure melting point temp.
+        real(prec), intent(IN)  :: cp(:,:,:)        ! [J kg-1 K-1] Specific heat capacity
+        real(prec), intent(IN)  :: ct(:,:,:)        ! [J a-1 m-1 K-1] Heat conductivity 
+        real(prec), intent(IN)  :: ux(:,:,:)        ! [m a-1] Horizontal x-velocity 
+        real(prec), intent(IN)  :: uy(:,:,:)        ! [m a-1] Horizontal y-velocity 
+        real(prec), intent(IN)  :: uz(:,:,:)        ! [m a-1] Vertical velocity 
+        real(prec), intent(IN)  :: Q_strn(:,:,:)    ! [K a-1] Internal strain heat production in ice
+        real(prec), intent(IN)  :: Q_b(:,:)         ! [J a-1 m-2] Basal frictional heat production 
+        real(prec), intent(IN)  :: Q_geo(:,:)       ! [mW m-2] Geothermal heat flux 
+        real(prec), intent(IN)  :: T_srf(:,:)       ! [degC] Surface temperature 
+        real(prec), intent(IN)  :: H_ice(:,:)       ! [m] Ice thickness 
+        real(prec), intent(IN)  :: H_w(:,:)         ! [m] Basal water layer thickness 
+        real(prec), intent(IN)  :: bmb(:,:)         ! [m a-1] Basal mass balance (melting is negative)
+        real(prec), intent(IN)  :: f_grnd(:,:)      ! [--] Floating point or grounded?
+        real(prec), intent(IN)  :: sigma(:)         ! [--] Vertical sigma coordinates (sigma==height)
+        real(prec), intent(IN)  :: dt               ! [a] Time step 
+        real(prec), intent(IN)  :: dx               ! [a] Horizontal grid step 
+        
+        ! Local variable
+        integer :: i, j, nx, ny, nz  
+        real(prec), allocatable  :: advecxy(:)   ! [K a-1 m-2] Horizontal heat advection 
+        logical :: is_float 
+
+        nx = size(T_ice,1)
+        ny = size(T_ice,2)
+        nz = size(T_ice,3)
+
+        allocate(advecxy(nz))
+
+        do j = 3, ny-2
+        do i = 3, nx-2 
+
+            ! Calculate the contribution of horizontal advection to column solution
+            call calc_advec_horizontal_column(advecxy,T_ice,ux,uy,dx,i,j)
+            
+            is_float = (f_grnd(i,j) .eq. 0.0)
+
+            ! Call thermodynamic solver for the column 
+            call calc_icetemp_grisli_column_up(T_ice(i,j,:),T_rock(i,j,:),T_pmp(i,j,:),cp(i,j,:),ct(i,j,:), &
+                                            uz(i,j,:),Q_strn(i,j,:),advecxy,Q_b(i,j),Q_geo(i,j),T_srf(i,j), &
+                                            H_ice(i,j),H_w(i,j),bmb(i,j),is_float,sigma,dt)
+        end do 
+        end do 
+
+        return 
+
+    end subroutine calc_icetemp_grisli_3D_up
+
     subroutine calc_icetemp_grisli_column_up(T_ice,T_rock,T_pmp,cp,ct,uz,Q_strn,advecxy,Q_b, &
                                             Q_geo,T_srf,H_ice,H_w,bmb,is_float,sigma,dt)
         ! GRISLI solver for thermodynamics for a given column of ice 
@@ -75,7 +134,7 @@ contains
                 stop 
             end if 
         end do 
-        
+
         ! Some parameters defined here for now, for testing 
         ! (these will move to a parameter file later)
         dzm     = 600.0            ! [m] Bedrock step height 
