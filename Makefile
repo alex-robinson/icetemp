@@ -58,6 +58,10 @@ $(objdir)/icetemp_grisli.o : $(srcdir)/icetemp_grisli.f90 $(objdir)/defs.o \
 					  $(objdir)/solver_tridiagonal.o $(objdir)/thermodynamics.o
 	$(FC) $(DFLAGS) $(FFLAGS) -c -o $@ $<
 
+$(objdir)/icetemp_imau.o : $(srcdir)/icetemp_imau.f90 $(objdir)/defs.o \
+					  $(objdir)/solver_tridiagonal.o $(objdir)/thermodynamics.o
+	$(FC) $(DFLAGS) $(FFLAGS) -c -o $@ $<
+
 ###############################################
 ##
 ## Compilation of complete programs
@@ -65,7 +69,7 @@ $(objdir)/icetemp_grisli.o : $(srcdir)/icetemp_grisli.f90 $(objdir)/defs.o \
 ###############################################
 
 test_icetemp : $(objdir)/ncio.o $(objdir)/defs.o $(objdir)/solver_tridiagonal.o \
-				$(objdir)/thermodynamics.o $(objdir)/icetemp_grisli.o
+				$(objdir)/thermodynamics.o $(objdir)/icetemp_grisli.o $(objdir)/icetemp_imau.o
 		$(FC) $(DLAGS) $(FFLAGS) $(INC_COORD) $(INC_LIS) -o $(bindir)/test_icetemp.x test_icetemp.f90 \
 			$(LFLAGS) $^
 		@echo " "

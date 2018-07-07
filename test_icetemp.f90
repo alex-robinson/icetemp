@@ -5,6 +5,7 @@ program test_icetemp
     use defs
     use thermodynamics 
     use icetemp_grisli 
+    use icetemp_imau 
     
     implicit none 
 
