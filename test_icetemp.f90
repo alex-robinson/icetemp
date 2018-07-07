@@ -176,7 +176,7 @@ contains
         ice%up%advecxy = 0.0       ! [] No horizontal advection 
 
         ! Calculate pressure melting point 
-        ice%up%T_pmp = calc_T_pmp((1.0-ice%up%sigma)*ice%H_ice,T0) - T0 
+        ice%up%T_pmp = calc_T_pmp(ice%H_ice,ice%up%sigma,T0) - T0 
 
         ! Define surface temperature of ice based on simple atmospheric correction below zero
         ice%up%T_ice(nz) = ice%T_srf 
