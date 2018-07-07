@@ -6,7 +6,7 @@ program test_icetemp
     use thermodynamics 
     use icetemp_grisli 
     use icetemp_imau 
-    
+
     implicit none 
 
     type icesheet_vectors
@@ -49,6 +49,10 @@ program test_icetemp
     character(len=512) :: file1D 
     real(prec)         :: dt_out 
     integer            :: nz, nzr 
+    real(prec)         :: dx 
+
+    character(len=512) :: solver 
+    logical            :: is_celcius 
 
     ! ===============================================================
     ! User options 
@@ -63,6 +67,10 @@ program test_icetemp
     nz      = 21           ! [--] Number of ice sheet points 
     nzr     = 11           ! [--] Number of bedrock points (for conductive bedrock solution)
 
+    dx      = 20e3         ! [m] Horizontal resolution (as input to imau solver - not currently used)
+
+    solver     = "imau"       ! "grisli" or "imau" 
+    is_celcius = .FALSE. 
     ! ===============================================================
 
     ! Initialize time and calculate number of time steps to iterate and 
@@ -89,24 +97,43 @@ program test_icetemp
         ! Get current time 
         time = t_start + n*dt 
 
-!         ! Call grisli icetemp routine
-!         call calc_icetemp_grisli_column_dwn(ice1%ibase,ice1%dwn%T_ice,ice1%dwn%T_rock,ice1%dwn%T_pmp, &
-!                                             ice1%dwn%cp,ice1%dwn%kt,ice1%dwn%uz,ice1%dwn%Q_strn,ice1%dwn%advecxy, &
-!                                             ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%is_float,dt)
-        
-!         ! Transfer info back to ice1%up for writing
-!         call icesheet_dwn_to_up(ice1%up,ice1%dwn)
-            
+        select case(trim(solver))
 
-!         ! Test with temp-dependent thermal properties
-!         ice1%up%cp      = calc_specific_heat_capacity(ice1%up%T_ice+T0)
-!         ice1%up%kt      = calc_thermal_conductivity(ice1%up%T_ice+T0) 
-        
-        call calc_icetemp_grisli_column_up(ice1%up%T_ice,ice1%up%T_rock,ice1%up%T_pmp, &
-                                           ice1%up%cp,ice1%up%kt,ice1%up%uz,ice1%up%Q_strn,ice1%up%advecxy, &
-                                           ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%bmb,ice1%is_float, &
-                                           ice1%up%sigma,dt)
-    
+            case("grisli") 
+
+!                 ! Call grisli icetemp routine
+!                 call calc_icetemp_grisli_column_dwn(ice1%ibase,ice1%dwn%T_ice,ice1%dwn%T_rock,ice1%dwn%T_pmp, &
+!                                                     ice1%dwn%cp,ice1%dwn%kt,ice1%dwn%uz,ice1%dwn%Q_strn,ice1%dwn%advecxy, &
+!                                                     ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%is_float,dt)
+                
+!                 ! Transfer info back to ice1%up for writing
+!                 call icesheet_dwn_to_up(ice1%up,ice1%dwn)
+                    
+                
+!                 ! Test with temp-dependent thermal properties
+!                 ice1%up%cp      = calc_specific_heat_capacity(ice1%up%T_ice+T0)
+!                 ice1%up%kt      = calc_thermal_conductivity(ice1%up%T_ice+T0) 
+                
+                call calc_icetemp_grisli_column_up(ice1%up%T_ice,ice1%up%T_rock,ice1%up%T_pmp, &
+                                                   ice1%up%cp,ice1%up%kt,ice1%up%uz,ice1%up%Q_strn,ice1%up%advecxy, &
+                                                   ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%bmb,ice1%is_float, &
+                                                   ice1%up%sigma,dt)
+            
+            case("imau") 
+
+
+                call calc_icetemp_imau_column_up(ice1%up%T_ice,ice1%bmb,ice1%is_float,ice1%H_ice,ice1%T_srf,ice1%up%advecxy, &
+                                                 ice1%up%uz*0.0,ice1%up%uz*0.0,ice1%up%uz,0.0,0.0,0.0, &
+                                                 0.0,0.0,0.0,ice1%up%cp,ice1%up%kt,ice1%up%Q_strn, &
+                                                 ice1%Q_b,ice1%up%T_pmp,ice1%smb,ice1%Q_geo,ice1%up%sigma,dx,dt)
+
+            case DEFAULT 
+
+                write(*,*) "test_icetemp:: Error: solver not recognized: "//trim(solver)
+                stop 
+
+        end select 
+
         if (mod(time,dt_out)==0) then 
             call write_step(ice1,ice1%up,filename=file1D,time=time)
         end if 
@@ -159,7 +186,7 @@ contains
         nz  = size(ice%up%T_ice)
         nzr = size(ice%up%T_rock) 
 
-        ice%T_srf    = 239.0-T0    ! [degC]
+        ice%T_srf    = 239.0       ! [K] 
         ice%smb      = 0.5         ! [m/a]
         ice%bmb      = 0.0         ! [m/a]
         ice%Q_geo    = 42.0        ! [mW/m2]
@@ -177,7 +204,12 @@ contains
         ice%up%advecxy = 0.0       ! [] No horizontal advection 
 
         ! Calculate pressure melting point 
-        ice%up%T_pmp = calc_T_pmp(ice%H_ice,ice%up%sigma,T0) - T0 
+        ice%up%T_pmp = calc_T_pmp(ice%H_ice,ice%up%sigma,T0) 
+
+        if (is_celcius) then 
+            ice%T_srf    = ice%T_srf - T0
+            ice%up%T_pmp = ice%up%T_pmp - T0 
+        end if 
 
         ! Define surface temperature of ice based on simple atmospheric correction below zero
         ice%up%T_ice(nz) = ice%T_srf 

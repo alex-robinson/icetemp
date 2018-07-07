@@ -24,39 +24,40 @@ module icetemp_imau
     end type 
 
     private
-    public :: temperature_imau_wrap
+    public :: calc_icetemp_imau_column_up
     public :: temperature_imau 
-
+    
 contains 
     
-    subroutine temperature_imau_wrap(T_ice,bmb,f_grnd, H_ice, T_srf, ux, uy, uz, dzsdx, dzsdy, dzsrfdt, &
+    subroutine calc_icetemp_imau_column_up(T_ice,bmb,is_float, H_ice, T_srf, advecxy, ux, uy, uz, dzsdx, dzsdy, dzsrfdt, &
                                       dHicedx, dHicedy, dHicedt, cp, kt, Q_strn, Q_b, T_pmp, mb_net, Q_geo, sigma, dx, dt)
         ! Calculate input variables to column temperature solver,
         ! and reverse index order (1:base,nz:surface) => (1:surface,nz:base)
 
         implicit none 
 
-        real(prec), intent(OUT) :: T_ice(:,:,:)                           ! The ice temperature [K]
-        real(prec), intent(OUT) :: bmb(:,:)                               ! The basal mass balance (negative melt) at the bottom at time time + dt if T_pmp is reached [J m^-2 y^-1]
-        real(prec), intent(IN)  :: f_grnd(:,:)                            ! Grounded fraction 
-        real(prec), intent(IN)  :: H_ice(:,:)                             ! The ice thickness [m]
-        real(prec), intent(IN)  :: T_srf(:,:)                             ! The ice surface temperature at time step time + dt [K]
-        real(prec), intent(IN)  :: ux(:,:,:)                              ! The 3D velocity field in the x-direction [m y^-1]
-        real(prec), intent(IN)  :: uy(:,:,:)                              ! The 3D velocity field in the y-direction [m y^-1]
-        real(prec), intent(IN)  :: uz(:,:,:)                              ! The 3D velocity field in the zeta-direction [m y^-1]
-        real(prec), intent(IN)  :: dzsdx(:,:)                             ! The surface gradient in the x-direction [m m^-1]
-        real(prec), intent(IN)  :: dzsdy(:,:)                             ! The surface gradient in the y-direction [m m^-1]
-        real(prec), intent(IN)  :: dzsrfdt(:,:)                           ! The surface gradient in time [m a-1]
-        real(prec), intent(IN)  :: dHicedx(:,:)                           ! The ice thickness gradient in the x-direction [m m^-1]
-        real(prec), intent(IN)  :: dHicedy(:,:)                           ! The ice thickness gradient in the y-direction [m m^-1]
-        real(prec), intent(IN)  :: dHicedt(:,:)                           ! The ice thickness gradient in time [m a-1]
-        real(prec), intent(IN)  :: cp(:,:,:)                              ! The specific heat capacity of ice at each x,y,zeta point [J kg^-1 K^-1]
-        real(prec), intent(IN)  :: kt(:,:,:)                              ! The conductivity of ice at each x,y,zeta point [J m^-1 K^-1 y^-1]
-        real(prec), intent(IN)  :: Q_strn(:,:,:)                          ! Internal strain heating [K a-1]
-        real(prec), intent(IN)  :: Q_b(:,:)                               ! The heat flux at the ice bottom [J m^-2 y^-1]
-        real(prec), intent(IN)  :: T_pmp(:,:,:)                           ! The pressure melting point temperature for each depth and for all grid points [K]
-        real(prec), intent(IN)  :: mb_net(:,:)                            ! Net basal and surface mass balance [meter ice equivalent per year]
-        real(prec), intent(IN)  :: Q_geo(:,:)                             ! Geothermal heat flux [1e-3 J m^-2 s^-1]
+        real(prec), intent(OUT) :: T_ice(:)                           ! The ice temperature [K]
+        real(prec), intent(OUT) :: bmb                               ! The basal mass balance (negative melt) at the bottom at time time + dt if T_pmp is reached [J m^-2 y^-1]
+        logical,    intent(IN)  :: is_float                            ! Grounded fraction 
+        real(prec), intent(IN)  :: H_ice                             ! The ice thickness [m]
+        real(prec), intent(IN)  :: T_srf                             ! The ice surface temperature at time step time + dt [K]
+        real(prec), intent(IN)  :: advecxy(:)                         ! The 3D velocity field in the x-direction [m y^-1]
+        real(prec), intent(IN)  :: ux(:)                              ! The 3D velocity field in the x-direction [m y^-1]
+        real(prec), intent(IN)  :: uy(:)                              ! The 3D velocity field in the y-direction [m y^-1]
+        real(prec), intent(IN)  :: uz(:)                              ! The 3D velocity field in the zeta-direction [m y^-1]
+        real(prec), intent(IN)  :: dzsdx                             ! The surface gradient in the x-direction [m m^-1]
+        real(prec), intent(IN)  :: dzsdy                             ! The surface gradient in the y-direction [m m^-1]
+        real(prec), intent(IN)  :: dzsrfdt                           ! The surface gradient in time [m a-1]
+        real(prec), intent(IN)  :: dHicedx                           ! The ice thickness gradient in the x-direction [m m^-1]
+        real(prec), intent(IN)  :: dHicedy                           ! The ice thickness gradient in the y-direction [m m^-1]
+        real(prec), intent(IN)  :: dHicedt                           ! The ice thickness gradient in time [m a-1]
+        real(prec), intent(IN)  :: cp(:)                              ! The specific heat capacity of ice at each x,y,zeta point [J kg^-1 K^-1]
+        real(prec), intent(IN)  :: kt(:)                              ! The conductivity of ice at each x,y,zeta point [J m^-1 K^-1 y^-1]
+        real(prec), intent(IN)  :: Q_strn(:)                          ! Internal strain heating [K a-1]
+        real(prec), intent(IN)  :: Q_b                               ! The heat flux at the ice bottom [J m^-2 y^-1]
+        real(prec), intent(IN)  :: T_pmp(:)                           ! The pressure melting point temperature for each depth and for all grid points [K]
+        real(prec), intent(IN)  :: mb_net                            ! Net basal and surface mass balance [meter ice equivalent per year]
+        real(prec), intent(IN)  :: Q_geo                             ! Geothermal heat flux [1e-3 J m^-2 s^-1]
         real(prec), intent(IN)  :: sigma(:)                               ! Vertical height axis (0:1) 
         real(prec), intent(IN)  :: dx 
         real(prec), intent(IN)  :: dt 
@@ -72,39 +73,34 @@ contains
         real(prec), allocatable  :: rev_Ki(:)                             ! The conductivity of ice at each x,y,zeta point [J m^-1 K^-1 y^-1]
         real(prec), allocatable  :: rev_Ti_pmp(:)                         ! The pressure melting point temperature for each depth and for all grid points [K]
         real(prec), allocatable  :: rev_advecxy(:)                        ! The xy horizontal advection of temperature contribution
-        real(prec), allocatable  :: advecxy(:)                            ! The xy horizontal advection of temperature contribution
         real(prec), allocatable  :: zeta(:)                               ! The xy horizontal advection of temperature contribution
         
         ! Output variables:
         real(prec), allocatable  :: rev_Ti_new(:)                          ! The new ice temperature at time time + dt [K]. The surface temperature T(1,:,:) is calculated with ice_surface_temperature()
         
         ! Local variables
-        integer    :: i, j, k, nx, ny, nz 
-        logical    :: is_float 
+        integer    :: i, j, k, nx, ny, nz  
         real(prec) :: bottom_melt 
         real(prec) :: Q_geo_now 
         real(prec) :: ghf_conv, ghf_now 
 
-        real(prec), allocatable :: zeta_t(:,:,:)
-        real(prec), allocatable :: zeta_x(:,:,:)
-        real(prec), allocatable :: zeta_y(:,:,:)
-        real(prec), allocatable :: zeta_z(:,:)
+        real(prec), allocatable :: zeta_t(:)
+        real(prec), allocatable :: zeta_x(:)
+        real(prec), allocatable :: zeta_y(:)
+        real(prec) :: zeta_z
 
         type(zeta_helper_type)  :: Cz                    ! Zeta helpers 
         
         ghf_conv = 1e-3*sec_year   ! [mW m-2] => [J m-2 a-1]
 
-        nx = size(T_ice,1)
-        ny = size(T_ice,2)
-        nz = size(T_ice,3)
+        nz = size(T_ice,1)
 
         allocate(zeta(nz)) 
 
-        allocate(zeta_t(nx,ny,nz))
-        allocate(zeta_x(nx,ny,nz))
-        allocate(zeta_y(nx,ny,nz))
-        allocate(zeta_z(nx,ny))
-        
+        allocate(zeta_t(nz))
+        allocate(zeta_x(nz))
+        allocate(zeta_y(nz))
+
         allocate(rev_Ti(nz))
         allocate(rev_U(nz))
         allocate(rev_V(nz))
@@ -114,7 +110,6 @@ contains
         allocate(rev_Ki(nz))
         allocate(rev_Ti_pmp(nz))
         allocate(rev_advecxy(nz))
-        allocate(advecxy(nz))
         allocate(rev_Ti_new(nz))
 
         ! Calculate depth axis from height axis (0:1) => (1:0) 
@@ -127,57 +122,37 @@ contains
         ! Calculate zeta helpers 
         call calc_zeta_helpers(Cz,zeta,dx,dx)
 
-        do j = 3, ny-2 
-        do i = 3, nx-2 
-        
-            ! Determine whether current point is floating or grounded  
-            is_float = f_grnd(i,j) .eq. 0.0 
+        ! Get geothermal heat flux in proper units 
+        Q_geo_now = Q_geo*ghf_conv 
 
-            ! Get geothermal heat flux in proper units 
-            Q_geo_now = Q_geo(i,j)*ghf_conv 
+        ! Store reversed column variables
+        do k = 1, nz  
+            rev_Ti(nz+1-k)       = T_ice(k)
+            rev_U(nz+1-k)        = ux(k)
+            rev_V(nz+1-k)        = uy(k) 
+            rev_W(nz+1-k)        = uz(k)
+            rev_Q_strn(nz+1-k)   = Q_strn(k)
+            rev_Cpi(nz+1-k)      = cp(k)
+            rev_Ki(nz+1-k)       = kt(k)
+            rev_Ti_pmp(nz+1-k)   = T_pmp(k)
+            rev_advecxy(nz+1-k)  = advecxy(k)
+        end do  
+     
+        call temperature_imau(zeta, Cz, zeta_t(:), zeta_x(:), zeta_y(:), zeta_z, &
+                        is_float, H_ice, T_srf, rev_Ti, rev_U, rev_V, rev_W, &
+                        rev_Q_strn, dzsdx, dzsdy, rev_Cpi, rev_Ki, &
+                        Q_geo_now, rev_Ti_pmp, rev_advecxy,mb_net, &
+                        rev_Ti_new,bottom_melt,dt) 
 
-            ! Calculate horizontal advection 
-            call calc_advec_horizontal_column(advecxy,T_ice,ux,uy,dx,i,j)
-
-            ! Store reversed column variables
-            do k = 1, nz  
-                rev_Ti(nz+1-k)       = T_ice(i,j,k)
-                rev_U(nz+1-k)        = ux(i,j,k)
-                rev_V(nz+1-k)        = uy(i,j,k) 
-                rev_W(nz+1-k)        = uz(i,j,k)
-                rev_Q_strn(nz+1-k)   = Q_strn(i,j,k)
-                rev_Cpi(nz+1-k)      = cp(i,j,k)
-                rev_Ki(nz+1-k)       = kt(i,j,k)
-                rev_Ti_pmp(nz+1-k)   = T_pmp(i,j,k)
-                rev_advecxy(nz+1-k)  = advecxy(k)
-            end do  
-
-            if (i .eq. 16 .and. j .eq. 16) then 
-                call temperature_imau(zeta, Cz, zeta_t(i,j,:), zeta_x(i,j,:), zeta_y(i,j,:), zeta_z(i,j), &
-                                is_float, H_ice(i,j), T_srf(i,j), rev_Ti, rev_U, rev_V, rev_W, &
-                                rev_Q_strn, dzsdx(i,j), dzsdy(i,j), rev_Cpi, rev_Ki, &
-                                Q_geo_now, rev_Ti_pmp, rev_advecxy,mb_net(i,j), &
-                                rev_Ti_new,bottom_melt,dt) 
-
-                ! Return output variables back to original vertical ordering
-                bmb(i,j)     = -bottom_melt 
-                do k = 1, nz 
-                    T_ice(i,j,k) = rev_Ti_new(nz+1-k)
-                end do 
-
-            else 
-                ! Test my robin solution
-                bmb(i,j)     = 0.0  
-                T_ice(i,j,:) = my_robin_solution(sigma,T_pmp(i,j,:),kt(i,j,:),cp(i,j,:),rho_ice, &
-                                                 H_ice(i,j),T_srf(i,j),mb_net(i,j),Q_geo(i,j),is_float)
-            end if 
-            
-        end do 
+        ! Return output variables back to original vertical ordering
+        bmb = -bottom_melt 
+        do k = 1, nz 
+            T_ice(k) = rev_Ti_new(nz+1-k)
         end do 
 
         return 
 
-    end subroutine temperature_imau_wrap
+    end subroutine calc_icetemp_imau_column_up
 
 
     subroutine temperature_imau(zeta, Cz, zeta_t, zeta_x, zeta_y, zeta_z, &
@@ -492,43 +467,38 @@ contains
         
         implicit none 
 
-        real(prec), intent(OUT) :: t(:,:,:) 
-        real(prec), intent(OUT) :: x(:,:,:) 
-        real(prec), intent(OUT) :: y(:,:,:) 
-        real(prec), intent(OUT) :: z(:,:) 
+        real(prec), intent(OUT) :: t(:) 
+        real(prec), intent(OUT) :: x(:) 
+        real(prec), intent(OUT) :: y(:) 
+        real(prec), intent(OUT) :: z 
         
-        real(prec), intent(IN)  :: Hi(:,:)
-        real(prec), intent(IN)  :: dHi_dt(:,:)
-        real(prec), intent(IN)  :: dHi_dx(:,:)
-        real(prec), intent(IN)  :: dHi_dy(:,:)
-        real(prec), intent(IN)  :: dHs_dt(:,:)
-        real(prec), intent(IN)  :: dHs_dx(:,:)
-        real(prec), intent(IN)  :: dHs_dy(:,:)
+        real(prec), intent(IN)  :: Hi
+        real(prec), intent(IN)  :: dHi_dt
+        real(prec), intent(IN)  :: dHi_dx
+        real(prec), intent(IN)  :: dHi_dy
+        real(prec), intent(IN)  :: dHs_dt
+        real(prec), intent(IN)  :: dHs_dx
+        real(prec), intent(IN)  :: dHs_dy
         real(prec), intent(IN)  :: zeta(:) 
 
         ! Local variables:
-        integer    :: i, j, k, nx, ny, nz 
+        integer    :: k, nz 
         real(prec) :: inverse_Hi                ! Contains the inverse of Hi
 
-        nx = size(t,1)
-        ny = size(t,2)
-        nz = size(t,3) 
+        nz = size(t,1) 
 
-        do i = 1, nx
-        do j = 1, ny
-            
-            inverse_Hi  = 1.0 / Hi(i,j)
+        inverse_Hi = 1.0 / Hi
 
-            do k = 1, nz
-                t(i,j,k) = inverse_Hi * (dHs_dt(i,j)  - zeta(k) * dHi_dt(i,j))
-                x(i,j,k) = inverse_Hi * (dHs_dx(i,j)  - zeta(k) * dHi_dx(i,j))
-                y(i,j,k) = inverse_Hi * (dHs_dy(i,j)  - zeta(k) * dHi_dy(i,j))
-            end do
-
-            z(i,j)  = -inverse_Hi
-            
+        do k = 1, nz
+            t(k) = inverse_Hi * (dHs_dt  - zeta(k) * dHi_dt)
+            x(k) = inverse_Hi * (dHs_dx  - zeta(k) * dHi_dx)
+            y(k) = inverse_Hi * (dHs_dy  - zeta(k) * dHi_dy)
         end do
-        end do
+
+        z  = -inverse_Hi
+            
+        return 
+
     end subroutine calculate_zeta_derivatives
 
     function robin_solution(zeta, Ts, Hi, mb_net, ghf, is_float, rho_ice) result(Ti)
