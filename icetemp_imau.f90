@@ -23,12 +23,78 @@ module icetemp_imau
 
     end type 
 
-    private
+    private 
+    public :: calc_icetemp_imau_3D_up
     public :: calc_icetemp_imau_column_up
     public :: temperature_imau 
     
 contains 
     
+    subroutine calc_icetemp_imau_3D_up(T_ice,bmb,f_grnd, H_ice, T_srf, ux, uy, uz, dzsdx, dzsdy, dzsrfdt, &
+                                      dHicedx, dHicedy, dHicedt, cp, kt, Q_strn, Q_b, T_pmp, smb, Q_geo, sigma, dx, dt)
+        ! Calculate input variables to column temperature solver,
+        ! and reverse index order (1:base,nz:surface) => (1:surface,nz:base)
+
+        implicit none 
+
+        real(prec), intent(OUT) :: T_ice(:,:,:)                           ! The ice temperature [K]
+        real(prec), intent(OUT) :: bmb(:,:)                               ! The basal mass balance (negative melt) at the bottom at time time + dt if T_pmp is reached [J m^-2 y^-1]
+        real(prec), intent(IN)  :: f_grnd(:,:)                            ! Grounded fraction 
+        real(prec), intent(IN)  :: H_ice(:,:)                             ! The ice thickness [m]
+        real(prec), intent(IN)  :: T_srf(:,:)                             ! The ice surface temperature at time step time + dt [K]
+        real(prec), intent(IN)  :: ux(:,:,:)                              ! The 3D velocity field in the x-direction [m y^-1]
+        real(prec), intent(IN)  :: uy(:,:,:)                              ! The 3D velocity field in the y-direction [m y^-1]
+        real(prec), intent(IN)  :: uz(:,:,:)                              ! The 3D velocity field in the zeta-direction [m y^-1]
+        real(prec), intent(IN)  :: dzsdx(:,:)                             ! The surface gradient in the x-direction [m m^-1]
+        real(prec), intent(IN)  :: dzsdy(:,:)                             ! The surface gradient in the y-direction [m m^-1]
+        real(prec), intent(IN)  :: dzsrfdt(:,:)                           ! The surface gradient in time [m a-1]
+        real(prec), intent(IN)  :: dHicedx(:,:)                           ! The ice thickness gradient in the x-direction [m m^-1]
+        real(prec), intent(IN)  :: dHicedy(:,:)                           ! The ice thickness gradient in the y-direction [m m^-1]
+        real(prec), intent(IN)  :: dHicedt(:,:)                           ! The ice thickness gradient in time [m a-1]
+        real(prec), intent(IN)  :: cp(:,:,:)                              ! The specific heat capacity of ice at each x,y,zeta point [J kg^-1 K^-1]
+        real(prec), intent(IN)  :: kt(:,:,:)                              ! The conductivity of ice at each x,y,zeta point [J m^-1 K^-1 y^-1]
+        real(prec), intent(IN)  :: Q_strn(:,:,:)                          ! Internal strain heating [K a-1]
+        real(prec), intent(IN)  :: Q_b(:,:)                               ! The heat flux at the ice bottom [J m^-2 y^-1]
+        real(prec), intent(IN)  :: T_pmp(:,:,:)                           ! The pressure melting point temperature for each depth and for all grid points [K]
+        real(prec), intent(IN)  :: smb(:,:)                               ! Surface mass balance [meter ice equivalent per year]
+        real(prec), intent(IN)  :: Q_geo(:,:)                             ! Geothermal heat flux [1e-3 J m^-2 s^-1]
+        real(prec), intent(IN)  :: sigma(:)                               ! Vertical height axis (0:1) 
+        real(prec), intent(IN)  :: dx 
+        real(prec), intent(IN)  :: dt 
+
+        ! Local variables
+        integer    :: i, j, nx, ny, nz 
+        logical    :: is_float 
+        real(prec), allocatable :: advecxy(:) 
+
+        nx = size(T_ice,1)
+        ny = size(T_ice,2)
+        nz = size(T_ice,3)
+
+        allocate(advecxy(nz))
+
+        do j = 3, ny-2 
+        do i = 3, nx-2 
+        
+            ! Determine whether current point is floating or grounded  
+            is_float = f_grnd(i,j) .eq. 0.0 
+
+            ! Calculate horizontal advection 
+            call calc_advec_horizontal_column(advecxy,T_ice,ux,uy,dx,i,j)
+
+            call calc_icetemp_imau_column_up(T_ice(i,j,:),bmb(i,j),is_float,H_ice(i,j),T_srf(i,j),advecxy, &
+                                             ux(i,j,:),uy(i,j,:),uz(i,j,:),dzsdx(i,j),dzsdy(i,j),dzsrfdt(i,j), &
+                                             dHicedx(i,j),dHicedy(i,j),dHicedt(i,j),cp(i,j,:),kt(i,j,:), &
+                                             Q_strn(i,j,:),Q_b(i,j),T_pmp(i,j,:),smb(i,j)+bmb(i,j),Q_geo(i,j),sigma,dx,dt)
+
+
+        end do 
+        end do 
+
+        return 
+
+    end subroutine calc_icetemp_imau_3D_up
+
     subroutine calc_icetemp_imau_column_up(T_ice,bmb,is_float, H_ice, T_srf, advecxy, ux, uy, uz, dzsdx, dzsdy, dzsrfdt, &
                                       dHicedx, dHicedy, dHicedt, cp, kt, Q_strn, Q_b, T_pmp, mb_net, Q_geo, sigma, dx, dt)
         ! Calculate input variables to column temperature solver,
@@ -36,8 +102,8 @@ contains
 
         implicit none 
 
-        real(prec), intent(OUT) :: T_ice(:)                           ! The ice temperature [K]
-        real(prec), intent(OUT) :: bmb                               ! The basal mass balance (negative melt) at the bottom at time time + dt if T_pmp is reached [J m^-2 y^-1]
+        real(prec), intent(INOUT) :: T_ice(:)                           ! The ice temperature [K]
+        real(prec), intent(OUT)   :: bmb                               ! The basal mass balance (negative melt) at the bottom at time time + dt if T_pmp is reached [J m^-2 y^-1]
         logical,    intent(IN)  :: is_float                            ! Grounded fraction 
         real(prec), intent(IN)  :: H_ice                             ! The ice thickness [m]
         real(prec), intent(IN)  :: T_srf                             ! The ice surface temperature at time step time + dt [K]
@@ -380,7 +446,7 @@ contains
         ! Replace solution with robin_solution to test it 
         !Ti_new(:) = robin_solution(zeta,Ts,Hi,mb_net,q_bottom,is_float,rho_ice)
         !bottom_melt = 0.0 
-        
+
         return 
     
     end subroutine temperature_imau
