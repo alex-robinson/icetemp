@@ -26,7 +26,6 @@ module icetemp_imau
     private 
     public :: calc_icetemp_imau_3D_up
     public :: calc_icetemp_imau_column_up
-    public :: temperature_imau 
     
 contains 
     
