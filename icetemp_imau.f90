@@ -113,7 +113,10 @@ contains
         allocate(rev_Ti_new(nz))
 
         ! Calculate depth axis from height axis (0:1) => (1:0) 
-        zeta = 1.0 - sigma 
+        ! Store reversed column variables
+        do k = 1, nz 
+            zeta(nz+1-k) = 1.0 - sigma(k)
+        end do  
 
         ! Calculate the zeta derivatives needed for thermodynamic solver
         call calculate_zeta_derivatives(zeta_t,zeta_x,zeta_y,zeta_z, H_ice, &
@@ -239,10 +242,6 @@ contains
 
         nz = size(Ti_new)
 
-!         allocate(alpha(2:nz))
-!         allocate(beta(nz))
-!         allocate(gamma(nz-1))
-!         allocate(delta(nz))
         allocate(alpha(nz))
         allocate(beta(nz))
         allocate(gamma(nz))
@@ -317,7 +316,7 @@ contains
 
         END IF ! End IF Hi_min
 
-        bottom_melt                   = 0.0
+        bottom_melt = 0.0
         
         IF(is_float) THEN
             additional_shelf_index = -1
@@ -379,8 +378,8 @@ contains
         bottom_melt = MAX(bottom_melt, -maximum_bottom_melt)
 
         ! Replace solution with robin_solution to test it 
-        Ti_new(:) = robin_solution(zeta,Ts,Hi,mb_net,q_bottom,is_float,rho_ice)
-        bottom_melt = 0.0 
+        !Ti_new(:) = robin_solution(zeta,Ts,Hi,mb_net,q_bottom,is_float,rho_ice)
+        !bottom_melt = 0.0 
 
         return 
     
