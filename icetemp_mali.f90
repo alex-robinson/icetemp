@@ -150,7 +150,170 @@ contains
 
 
 
+!     subroutine mali_temp_diffusion_column()
 
+!         implicit none 
+
+!         return 
+
+!     end subroutine mali_temp_diffusion_column
+
+
+        subroutine temperature_matrix_elements(&
+         deltat,                &
+         nVertLevels,           &
+         layerCenterSigma,      &
+         dsigmaTerm,            &
+         iceCond_kt,            &
+         floatingMask,          &
+         thickness,             &
+         temperature,           &
+         surfaceTemperature,    &
+         basalTemperature,      &
+         heatDissipation,       &
+         basalHeatFlux,         &
+         basalFrictionFlux,     &
+         subd,                  &
+         diag,                  &
+         supd,                  &
+         rhs)
+
+      ! Note: Matrix elements (subd, supd, diag, rhs) are indexed from 1 to nVertLevels+2,
+      !       whereas temperature is indexed from 1 to nVertLevels.
+      !       The first row of the matrix is the equation for surfaceTemperature, and
+      !       the last row is the equation for basalTemperature.
+
+      !-----------------------------------------------------------------
+      ! input variables
+      !-----------------------------------------------------------------
+
+      real(kind=prec), intent(in) :: &
+           deltat                   !< Input: time step (s)
+
+      integer, intent(in) :: &
+           nVertLevels              !< Input: number of vertical layers
+
+      real(kind=prec), dimension(nVertLevels), intent(in) :: &
+           layerCentersigma         !< Input: sigma coordinate at layer midpoints
+
+      real(kind=prec), dimension(:,:), intent(in) :: &
+           dsigmaTerm               !< Input: vertical grid quantities
+
+      real(kind=prec), dimension(nVertLevels), intent(in) :: &
+           iceCond_kt               !< Input: vertical grid quantities
+
+      integer, intent(in) :: &
+           floatingMask             !< Input: = 1 where ice is floating, else = 0
+
+      real(kind=prec), intent(in) ::  &
+           thickness                !< Input: ice thickness (m)
+
+      real(kind=prec), dimension(nVertLevels), intent(in) :: &
+           temperature              !< Input: ice temperature (deg C)
+
+      real(kind=prec), intent(in) :: &
+           surfaceTemperature,    & !< Input: surface ice temperature (deg C)
+           basalTemperature         !< Input: basal ice temperature (deg C)
+
+      real(kind=prec), dimension(nVertLevels), intent(in) :: &
+           heatDissipation          !< Input: interior heat dissipation (deg/s)
+
+      real(kind=prec), intent(in) :: &
+           basalHeatFlux            !< Input: geothermal heat flux (W m-2), positive up
+
+      real(kind=prec), intent(in) :: &
+           basalFrictionFlux        !< Input: basal friction heat flux (W m-2), >= 0
+
+      !-----------------------------------------------------------------
+      ! output variables
+      !-----------------------------------------------------------------
+
+      real(kind=prec), dimension(:), intent(out) :: &
+           subd, diag, supd, rhs    !< Output: tridiagonal matrix elements
+
+      !-----------------------------------------------------------------
+      ! local variables
+      !-----------------------------------------------------------------
+
+      real(kind=prec) :: pmpTemperatureBed  ! pressure melting temperature at bed
+      real(kind=prec) :: factor             ! term in tridiagonal matrix
+      real(kind=prec) :: dsigmaBot          ! bottom layer thickness in sigma coords
+
+      real(kind=prec) :: iceConductivity   
+      real(kind=prec) :: cp_ice   
+      
+
+      ! Get mean column ice conductivity 
+      iceConductivity = sum(iceCond_kt) / size(iceCond_kt,1)
+
+
+      ! Compute subdiagonal, diagonal, and superdiagonal matrix elements,
+      ! along with the right-hand-side vector
+
+      ! upper boundary: set to surfaceTemperature
+
+      subd(1) = 0.0_prec
+      diag(1) = 1.0_prec
+      supd(1) = 0.0_prec
+      rhs(1)  = surfaceTemperature
+
+      ! ice interior, layers 1:nVertLevels  (matrix elements 2:nVertLevels+1)
+
+      factor = deltat * iceConductivity / (rho_ice*cp_ice) / thickness**2
+
+      subd(2:nVertLevels+1) = -factor * dsigmaTerm(1:nVertLevels,1)
+      supd(2:nVertLevels+1) = -factor * dsigmaTerm(1:nVertLevels,2)
+      diag(2:nVertLevels+1) = 1.0_prec - subd(2:nVertLevels+1) - supd(2:nVertLevels+1)
+      rhs(2:nVertLevels+1)  = temperature(1:nVertLevels) + heatDissipation(1:nVertLevels)*deltat
+
+      ! basal boundary:
+      ! for grounded ice, a heat flux is applied
+      ! for floating ice, the basal temperature is held constant
+
+      !Note: If T(upn) < T_pmp, then require dT/dsigma = H/k * (G + taub*ubas)
+      !       That is, net heat flux at lower boundary must equal zero.
+      !      If T(upn) >= Tpmp, then set T(upn) = Tpmp
+
+      if (floatingMask == 1) then
+
+         subd(nVertLevels+2) = 0.0_prec
+         diag(nVertLevels+2) = 1.0_prec
+         supd(nVertLevels+2) = 0.0_prec
+         rhs(nVertLevels+2)  = basalTemperature
+
+      else    ! grounded ice
+
+         call pressure_melting_point(thickness, pmpTemperatureBed)
+
+         if (abs(basalTemperature - pmpTemperatureBed) < 0.001_prec) then
+
+            ! hold basal temperature at pressure melting point
+
+            subd(nVertLevels+2) = 0.0_prec
+            diag(nVertLevels+2) = 1.0_prec
+            supd(nVertLevels+2) = 0.0_prec
+            rhs(nVertLevels+2)  = pmpTemperatureBed
+
+         else   ! frozen at bed
+                ! maintain balance of heat sources and sinks
+                ! (conductive flux, geothermal flux, and basal friction)
+
+            ! Note: basalHeatFlux is generally >= 0, since defined as positive up
+
+            ! calculate dsigma for the bottom layer between the basal boundary and the temperature point above
+            dsigmaBot = 1.0_prec - layerCentersigma(nVertLevels)
+
+            ! backward Euler flux basal boundary condition
+            subd(nVertLevels+2) = -1.0_prec
+            diag(nVertLevels+2) =  1.0_prec
+            supd(nVertLevels+2) =  0.0_prec
+            rhs(nVertLevels+2)  = (basalFrictionFlux + basalHeatFlux) * dsigmaBot*thickness / iceConductivity
+
+         endif   ! melting or frozen
+
+      end if     ! floating or grounded
+
+    end subroutine temperature_matrix_elements
 
 
 end module icetemp_mali
