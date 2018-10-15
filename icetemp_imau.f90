@@ -406,8 +406,8 @@ contains
                     IF(nz - k + 1 <= number_of_potential_bottom_melt_layers) THEN
                         ! In all layers where the temperature exceeds the pressure melting point, the energy leavings are calculated from the temperature differences,
                         ! and the summation of them over the vertical layers is applied as bottom melt per (thermo) time step (see equation (X.48)):
-                        !bottom_melt = bottom_melt - Delta_T * (zeta(k) - zeta(k-1)) * Hi          *  Cpi(k)                 / (latent_heat * dt)  ! original method: taking the lower layer value
-                        bottom_melt = bottom_melt - Delta_T * (zeta(k) - zeta(k-1)) * Hi * 0.50 * (Cpi(k) + Cpi(k-1)) / (latent_heat * dt)  ! new      method: taking the average value of the zeta layer
+                        !bottom_melt = bottom_melt + Delta_T * (zeta(k) - zeta(k-1)) * Hi          *  Cpi(k)                 / (latent_heat * dt)  ! original method: taking the lower layer value
+                        bottom_melt = bottom_melt + Delta_T * (zeta(k) - zeta(k-1)) * Hi * 0.50 * (Cpi(k) + Cpi(k-1)) / (latent_heat * dt)  ! new      method: taking the average value of the zeta layer
                     END IF
 
                     ! Debug check on extreme values:
@@ -440,7 +440,7 @@ contains
 
         END IF
 
-        bottom_melt = MAX(bottom_melt, -maximum_bottom_melt)
+        bottom_melt = MAX(bottom_melt, maximum_bottom_melt)
 
         ! Replace solution with robin_solution to test it 
         !Ti_new(:) = robin_solution(zeta,Ts,Hi,mb_net,q_bottom,is_float,rho_ice)

@@ -69,8 +69,8 @@ program test_icetemp
 
     dx      = 20e3         ! [m] Horizontal resolution (as input to imau solver - not currently used)
 
-    solver     = "imau"       ! "grisli" or "imau" 
-    is_celcius = .FALSE. 
+    solver     = "grisli"       ! "grisli" or "imau" 
+    is_celcius = .TRUE. 
     ! ===============================================================
 
     ! Initialize time and calculate number of time steps to iterate and 
