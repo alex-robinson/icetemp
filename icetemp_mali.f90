@@ -114,7 +114,7 @@ contains
         real(prec), intent(IN)  :: dt           ! [a] Time step 
 
         ! Local variables 
-        integer :: k, nz, nzt, nzz 
+        integer :: k, nz, nzt, nzz, ki  
         real(prec) :: T_pmp_base
         real(prec) :: Q_geo_now, ghf_conv  
         real(prec), allocatable :: T_ice_aa(:)
@@ -135,7 +135,7 @@ contains
         nz  = size(sigma,1)
         nzt = size(sigt,1)   ! == nz-1, only layer midpoints where T is defined
         nzz = nz+1           ! == nz+1, layer midpoints plus upper and lower boundaries
-        
+
         allocate(cp_aa(nzt))
         allocate(ct_aa(nzt))
         allocate(advecxy_aa(nzt))
@@ -153,7 +153,7 @@ contains
         ct_aa = sum(ct) / size(ct,1)
         
         ! Get pressure melting point temperature at the base [celcius]
-        T_pmp_base = calc_T_pmp(H_ice,sigma=1.0, T0=0.0)
+        T_pmp_base = calc_T_pmp(H_ice,sigma=0.0,T0=0.0)
 
         ! Get geothermal heat flux in proper units 
         Q_geo_now = Q_geo*1e-3*sec_year   ! [mW m-2] => [J m-2 a-1]
@@ -169,10 +169,10 @@ contains
         end do 
 
         ! Ice surface 
-        subd(1) = 0.0_prec
-        diag(1) = 1.0_prec
-        supd(1) = 0.0_prec
-        rhs(1)  = T_srf
+        subd(nzt+2) = 0.0_prec
+        diag(nzt+2) = 1.0_prec
+        supd(nzt+2) = 0.0_prec
+        rhs(nzt+2)  = T_srf
 
         ! Ice interior, layers 1:nzt  (matrix elements 2:nzt+1)
 
@@ -183,25 +183,35 @@ contains
         diag(2:nzt+1) = 1.0_prec - subd(2:nzt+1) - supd(2:nzt+1)
         rhs(2:nzt+1)  = T_ice(1:nzt) + Q_strn_aa(1:nzt)*dt
 
+!         ! Populate interior points, reversing order (k=1 surface, k=nzt+2 base)
+!         do k = 2, nzt+1 
+!             ki = nzt + 2 - k 
+!             subd(k) = -factor(ki) * dsigt_a(ki)
+!             supd(k) = -factor(ki) * dsigt_b(ki)
+!             diag(k) = 1.0 - subd(k) - supd(k)
+!             rhs(k)  = T_ice(ki) + Q_strn_aa(ki)*dt 
+!         end do 
+        
         if (is_float) then
             ! Floating ice - set temperature equal to basal temperature 
 
-            subd(nzt+2) = 0.0_prec
-            diag(nzt+2) = 1.0_prec
-            supd(nzt+2) = 0.0_prec
-            rhs(nzt+2)  = T_base 
+            subd(1) = 0.0_prec
+            diag(1) = 1.0_prec
+            supd(1) = 0.0_prec
+            rhs(1)  = T_base 
 
         else 
             ! Grounded ice 
 
-            if (abs(T_base - T_pmp_base) < 0.001_prec) then
+!             if (abs(T_base - T_pmp_base) < 0.001_prec) then
+            if (T_base > (T_pmp_base - 0.001_prec)) then
                 ! Temperate at bed 
                 ! Hold basal temperature at pressure melting point
 
-                subd(nzt+2) = 0.0_prec
-                diag(nzt+2) = 1.0_prec
-                supd(nzt+2) = 0.0_prec
-                rhs(nzt+2)  = T_pmp_base 
+                subd(1) = 0.0_prec
+                diag(1) = 1.0_prec
+                supd(1) = 0.0_prec
+                rhs(1)  = T_pmp_base 
 
             else   
                 ! Frozen at bed
@@ -214,10 +224,10 @@ contains
                 dsigmaBot = sigt(1) - 0.0 
 
                 ! backward Euler flux basal boundary condition
-                subd(nzt+2) = -1.0_prec
-                diag(nzt+2) =  1.0_prec
-                supd(nzt+2) =  0.0_prec
-                rhs(nzt+2)  = (Q_b + Q_geo_now) * dsigmaBot*H_ice / ct_aa(nzt)
+                subd(1) = -1.0_prec
+                diag(1) =  1.0_prec
+                supd(1) =  0.0_prec
+                rhs(1)  = (Q_b + Q_geo_now) * dsigmaBot*H_ice / ct_aa(1)
 
             end if   ! melting or frozen
 
@@ -229,7 +239,11 @@ contains
         ! Copy the solution into the temperature variables
         !T_srf        = solution(1)
         T_ice(1:nzt) = solution(2:nzt+1)
-        T_base       = solution(nzt+2)
+        T_base       = solution(1)
+
+!         do k = 1, nzt 
+!             T_ice(k) = solution(nzt+2-k)
+!         end do 
 
         return 
 
@@ -359,7 +373,8 @@ contains
 
       else    ! grounded ice
 
-         call pressure_melting_point(thickness, pmpTemperatureBed)
+        ! ajr: commented out for compiling
+         !call pressure_melting_point(thickness, pmpTemperatureBed)
 
          if (abs(basalTemperature - pmpTemperatureBed) < 0.001_prec) then
 

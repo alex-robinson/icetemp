@@ -21,10 +21,11 @@ program test_icetemp
         real(prec), allocatable :: advecxy(:) ! [] Horizontal heat advection magnitude
         real(prec), allocatable :: Q_strn(:)  ! [] Strain heating 
         
-        ! new: MALI style 
-        real(prec), allocatable :: sigt(:)    ! [-] sigma coordinates for internal ice layer midpoints
-        real(prec), allocatable :: dsigt_a(:) ! [-] sigma coordinates for internal ice layer midpoints
-        real(prec), allocatable :: dsigt_b(:) ! [-] sigma coordinates for internal ice layer midpoints
+        ! new: MALI style
+        real(prec), allocatable :: T_ice_aa(:) ! nzt [degC] Ice temperature 
+        real(prec), allocatable :: sigt(:)     ! nzt [-] sigma coordinates for internal ice layer midpoints
+        real(prec), allocatable :: dsigt_a(:)  ! nzt [-] sigma coordinates for internal ice layer midpoints
+        real(prec), allocatable :: dsigt_b(:)  ! nzt [-] sigma coordinates for internal ice layer midpoints
         
     end type 
 
@@ -138,7 +139,7 @@ program test_icetemp
 
             case("mali")
 
-                call mali_temp_diffusion_column(ice1%up%T_ice,ice1%T_base,ice1%up%T_pmp,ice1%up%cp,ice1%up%kt, &
+                call mali_temp_diffusion_column(ice1%up%T_ice_aa,ice1%T_base,ice1%up%T_pmp,ice1%up%cp,ice1%up%kt, &
                                                 ice1%up%uz,ice1%up%Q_strn,ice1%up%advecxy,ice1%Q_b, &
                                                 ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%bmb,ice1%is_float, &
                                                 ice1%up%sigma,ice1%up%sigt,ice1%up%dsigt_a,ice1%up%dsigt_b,dt)
@@ -235,14 +236,18 @@ contains
         ! Basal temperature is 10 deg below freezing point 
         ice%up%T_ice(1) = ice%up%T_pmp(1) - 10.0 
 
-        ice%T_base   = ice%up%T_ice(1)
-
         ! Intermediate layers are linearly interpolated 
         do k = 2, nz-1 
             ice%up%T_ice(k) = ice%up%T_ice(1)+ice%up%sigma(k)*(ice%up%T_ice(nz)-ice%up%T_ice(1))
         end do 
 
         ice%up%T_rock = ice%up%T_ice(1) 
+
+        ! NEW: MALI style temps
+        ice%T_base   = ice%up%T_ice(1)
+        do k = 1, nzt 
+            ice%up%T_ice_aa(k) = ice%T_base+ice%up%sigt(k)*(ice%T_srf-ice%T_base)
+        end do 
 
         ! Define vertical velocity profile (linear)
         ice%up%uz(nz) = -ice%smb 
@@ -282,9 +287,10 @@ contains
         if (allocated(ice%up%advecxy)) deallocate(ice%up%advecxy)
         if (allocated(ice%up%Q_strn))  deallocate(ice%up%Q_strn)
         
-        if (allocated(ice%up%sigt))    deallocate(ice%up%sigt)
-        if (allocated(ice%up%dsigt_a)) deallocate(ice%up%dsigt_a)
-        if (allocated(ice%up%dsigt_b)) deallocate(ice%up%dsigt_b)
+        if (allocated(ice%up%T_ice_aa)) deallocate(ice%up%T_ice_aa)
+        if (allocated(ice%up%sigt))     deallocate(ice%up%sigt)
+        if (allocated(ice%up%dsigt_a))  deallocate(ice%up%dsigt_a)
+        if (allocated(ice%up%dsigt_b))  deallocate(ice%up%dsigt_b)
         
         ! Allocate vectors with desired lengths
         allocate(ice%up%sigma(nz))
@@ -297,6 +303,7 @@ contains
         allocate(ice%up%advecxy(nz))
         allocate(ice%up%Q_strn(nz))
 
+        allocate(ice%up%T_ice_aa(nzt))
         allocate(ice%up%sigt(nzt))
         allocate(ice%up%dsigt_a(nzt))
         allocate(ice%up%dsigt_b(nzt))
@@ -322,6 +329,8 @@ contains
         ice%up%uz      = 0.0
         ice%up%advecxy = 0.0  
         ice%up%Q_strn  = 0.0
+
+        ice%up%T_ice_aa = 0.0
 
         ! Now allocate down variables too (with vertical coordinate as depth)
         ice%dwn = ice%up 
@@ -354,7 +363,7 @@ contains
         call nc_create(filename)
         call nc_write_dim(filename,"sigma", x=sigma, units="1")
         call nc_write_dim(filename,"sigmar",x=0,nx=nzr,dx=1,units="1")
-        call nc_write_dim(filename,"sigt", x=sigt, units="1")
+        call nc_write_dim(filename,"sigt", x=[0.0,sigt,1.0], units="1")
         call nc_write_dim(filename,"time",  x=time_init,dx=1.0_prec,nx=1,units="years",unlimited=.TRUE.)
 
         return
@@ -374,6 +383,10 @@ contains
         integer    :: ncid, n
         real(prec) :: time_prev 
         character(len=12), parameter :: vert_dim = "sigma"
+        integer    :: nzt 
+        real(prec), allocatable :: T_ice_aa(:)  
+
+        nzt = size(vecs%sigt) 
 
         ! Open the file for writing
         call nc_open(filename,ncid,writable=.TRUE.)
@@ -406,6 +419,16 @@ contains
         call nc_write(filename,"H_ice",   ice%H_ice,units="m",long_name="Ice thickness",dim1="time",start=[n],ncid=ncid)
         call nc_write(filename,"H_w",     ice%H_w,units="m",long_name="Basal water thickness",dim1="time",start=[n],ncid=ncid)
         call nc_write(filename,"is_float",ice%is_float,units="",long_name="Floating flag",dim1="time",start=[n],ncid=ncid)
+        
+        ! New - Mali style 
+        allocate(T_ice_aa(nzt+2))
+
+        T_ice_aa(1)       = ice%T_base 
+        T_ice_aa(2:nzt+1) = vecs%T_ice_aa(1:nzt) 
+        T_ice_aa(nzt+2)   = ice%T_srf 
+
+        call nc_write(filename,"T_ice_aa",T_ice_aa,  units="degC",   long_name="Ice temperature",         dim1="sigt",dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"T_base",  ice%T_base,units="degC",   long_name="Basal temperature",       dim1="time",start=[n],ncid=ncid)
         
         ! Close the netcdf file
         call nc_close(ncid)
