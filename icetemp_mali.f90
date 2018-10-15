@@ -92,9 +92,9 @@ contains
 
         implicit none 
 
-        real(prec), intent(INOUT) :: T_ice(:)   ! nz [degC] Ice column temperature
+        real(prec), intent(INOUT) :: T_ice(:)   ! nz-1 [degC] Ice column temperature
         real(prec), intent(INOUT) :: T_base     ! [degC] Basal temperature
-        real(prec), intent(IN)  :: T_pmp(:)     ! nz [degC] Pressure melting point temp.
+        real(prec), intent(IN)  :: T_pmp(:)     ! nz-1 [degC] Pressure melting point temp.
         real(prec), intent(IN)  :: cp(:)        ! nz   [J kg-1 K-1] Specific heat capacity
         real(prec), intent(IN)  :: ct(:)        ! nz   [J a-1 m-1 K-1] Heat conductivity 
         real(prec), intent(IN)  :: uz(:)        ! nz   [m a-1] Vertical velocity 
@@ -117,11 +117,10 @@ contains
         integer :: k, nz, nzt, nzz, ki  
         real(prec) :: T_pmp_base
         real(prec) :: Q_geo_now, ghf_conv  
-        real(prec), allocatable :: T_ice_aa(:)
-        real(prec), allocatable :: T_pmp_aa(:)
         real(prec), allocatable :: cp_aa(:) 
         real(prec), allocatable :: ct_aa(:) 
         real(prec), allocatable :: advecxy_aa(:) 
+        real(prec), allocatable :: advecz_aa(:) 
         real(prec), allocatable :: Q_strn_aa(:) 
         
         real(prec), allocatable :: subd(:)     ! nzz 
@@ -139,6 +138,7 @@ contains
         allocate(cp_aa(nzt))
         allocate(ct_aa(nzt))
         allocate(advecxy_aa(nzt))
+        allocate(advecz_aa(nzt))
         allocate(Q_strn_aa(nzt))
         
         allocate(subd(nzz))
@@ -167,6 +167,12 @@ contains
         do k = 1, nzt 
             Q_strn_aa(k) = 0.5*(Q_strn(k)+Q_strn(k+1))
         end do 
+
+        ! Step 1: apply vertical advection 
+        call advection_1D_firstorder(advecz_aa,T_ice,uz,H_ice,T_srf,T_base,sigt)
+        T_ice = T_ice - dt*advecz_aa 
+
+        ! Step 2: apply vertical diffusion 
 
         ! Ice surface 
         subd(nzt+2) = 0.0_prec
@@ -249,25 +255,69 @@ contains
 
     end subroutine mali_temp_diffusion_column
 
-    subroutine advection_1D_firstorder(Q,u,sigt,dt)
+    subroutine advection_1D_firstorder(advecz,Q,uz,H_ice,Q_srf,Q_base,sigt)
+        ! Calculate vertical advection term advecz, which enters
+        ! advection equation as
+        ! Q_new = Q - dt*advecz = Q - dt*u*dQ/dx
 
         implicit none 
 
-        real(prec), intent(INOUT) :: Q(:)     ! nzt
-        real(prec), intent(INOUT) :: u(:)     ! nzt+1 
-        real(prec), intent(INOUT) :: sigma(:) ! nzt+1 
-        real(prec), intent(IN)    :: sigt(:) 
-        real(prec), intent(IN)    :: dt 
-
+        real(prec), intent(OUT)   :: advecz(:) ! nzt, cell centers
+        real(prec), intent(INOUT) :: Q(:)      ! nzt, cell centers
+        real(prec), intent(IN)    :: uz(:)     ! nzt+1 == nz, cell boundaries
+        real(prec), intent(IN)    :: H_ice     ! Ice thickness 
+        real(prec), intent(IN)    :: Q_srf     ! Surface value
+        real(prec), intent(IN)    :: Q_base    ! Base value
+        real(prec), intent(IN)    :: sigt(:)   ! nzt, cell centers
+        
         ! Local variables
-        integer :: k, nz, nzt  
-        real(prec), alloctable :: Q_new(:) 
+        integer :: k, nzt   
+        real(prec) :: u_aa 
+        real(prec) :: dx 
 
-        nz  = size(sigma,1)
         nzt = size(sigt,1)
 
-        ! TO DO 
-        
+        ! At center of base layer
+        k    = 1 
+        u_aa = 0.5*(uz(k)+uz(k+1)) ! Get velocity at cell center   ! ajr: replace zero with db/dt eventually!
+        if (u_aa > 0.0) then 
+            ! Upwind positive
+            dx       = H_ice*(sigt(k+1)-sigt(k))
+            advecz(k) = uz(k+1)*(Q(k+1)-Q(k))/dx   
+        else
+            ! Upwind negative
+            dx       = H_ice*(sigt(k)-0.0)
+            advecz(k) = uz(k)*(Q(k)-Q_base)/dx
+        end if 
+
+        ! Loop over internal cell centers and perform upwind advection 
+        do k = 2, nzt-1 
+            u_aa = 0.5*(uz(k)+uz(k+1)) ! Get velocity at cell center
+            if (u_aa > 0.0) then 
+                ! Upwind positive
+                dx = H_ice*(sigt(k+1)-sigt(k))
+                advecz(k) = uz(k+1)*(Q(k+1)-Q(k))/dx   
+            else
+                ! Upwind negative
+                dx = H_ice*(sigt(k)-sigt(k-1))
+                advecz(k) = uz(k)*(Q(k)-Q(k-1))/dx
+            end if 
+        end do 
+
+        ! At center of surface layer
+        k    = nzt 
+        u_aa = 0.5*(uz(k)+uz(k+1)) ! Get velocity at cell center
+        if (u_aa > 0.0) then 
+            ! Upwind positive
+            dx   = H_ice*(1.0-sigt(k))
+            advecz(k) = uz(k+1)*(Q_srf-Q(k))/dx   
+        else
+            ! Upwind negative
+            dx       = H_ice*(sigt(k)-sigt(k-1))
+            advecz(k) = uz(k)*(Q(k)-Q(k-1))/dx
+        end if 
+
+        ! Replace old 
         return 
 
     end subroutine advection_1D_firstorder

@@ -23,6 +23,7 @@ program test_icetemp
         
         ! new: MALI style
         real(prec), allocatable :: T_ice_aa(:) ! nzt [degC] Ice temperature 
+        real(prec), allocatable :: T_pmp_aa(:) ! nzt [degC] Ice temperature
         real(prec), allocatable :: sigt(:)     ! nzt [-] sigma coordinates for internal ice layer midpoints
         real(prec), allocatable :: dsigt_a(:)  ! nzt [-] sigma coordinates for internal ice layer midpoints
         real(prec), allocatable :: dsigt_b(:)  ! nzt [-] sigma coordinates for internal ice layer midpoints
@@ -139,7 +140,7 @@ program test_icetemp
 
             case("mali")
 
-                call mali_temp_diffusion_column(ice1%up%T_ice_aa,ice1%T_base,ice1%up%T_pmp,ice1%up%cp,ice1%up%kt, &
+                call mali_temp_diffusion_column(ice1%up%T_ice_aa,ice1%T_base,ice1%up%T_pmp_aa,ice1%up%cp,ice1%up%kt, &
                                                 ice1%up%uz,ice1%up%Q_strn,ice1%up%advecxy,ice1%Q_b, &
                                                 ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%bmb,ice1%is_float, &
                                                 ice1%up%sigma,ice1%up%sigt,ice1%up%dsigt_a,ice1%up%dsigt_b,dt)
@@ -249,6 +250,9 @@ contains
             ice%up%T_ice_aa(k) = ice%T_base+ice%up%sigt(k)*(ice%T_srf-ice%T_base)
         end do 
 
+        ice%up%T_pmp_aa = calc_T_pmp(ice%H_ice,ice%up%sigt,T0) 
+        if (is_celcius) ice%up%T_pmp_aa = ice%up%T_pmp_aa - T0 
+
         ! Define vertical velocity profile (linear)
         ice%up%uz(nz) = -ice%smb 
         ice%up%uz(1)  = 0.0 
@@ -288,6 +292,7 @@ contains
         if (allocated(ice%up%Q_strn))  deallocate(ice%up%Q_strn)
         
         if (allocated(ice%up%T_ice_aa)) deallocate(ice%up%T_ice_aa)
+        if (allocated(ice%up%T_pmp_aa)) deallocate(ice%up%T_pmp_aa)
         if (allocated(ice%up%sigt))     deallocate(ice%up%sigt)
         if (allocated(ice%up%dsigt_a))  deallocate(ice%up%dsigt_a)
         if (allocated(ice%up%dsigt_b))  deallocate(ice%up%dsigt_b)
@@ -304,6 +309,7 @@ contains
         allocate(ice%up%Q_strn(nz))
 
         allocate(ice%up%T_ice_aa(nzt))
+        allocate(ice%up%T_pmp_aa(nzt))
         allocate(ice%up%sigt(nzt))
         allocate(ice%up%dsigt_a(nzt))
         allocate(ice%up%dsigt_b(nzt))
@@ -331,6 +337,7 @@ contains
         ice%up%Q_strn  = 0.0
 
         ice%up%T_ice_aa = 0.0
+        ice%up%T_pmp_aa = 0.0
 
         ! Now allocate down variables too (with vertical coordinate as depth)
         ice%dwn = ice%up 
@@ -363,7 +370,8 @@ contains
         call nc_create(filename)
         call nc_write_dim(filename,"sigma", x=sigma, units="1")
         call nc_write_dim(filename,"sigmar",x=0,nx=nzr,dx=1,units="1")
-        call nc_write_dim(filename,"sigt", x=[0.0,sigt,1.0], units="1")
+        call nc_write_dim(filename,"sigt", x=sigt, units="1")
+        call nc_write_dim(filename,"sigt_all", x=[0.0,sigt,1.0], units="1")
         call nc_write_dim(filename,"time",  x=time_init,dx=1.0_prec,nx=1,units="years",unlimited=.TRUE.)
 
         return
@@ -421,14 +429,15 @@ contains
         call nc_write(filename,"is_float",ice%is_float,units="",long_name="Floating flag",dim1="time",start=[n],ncid=ncid)
         
         ! New - Mali style 
+        call nc_write(filename,"T_ice_aa",vecs%T_ice_aa,  units="degC",   long_name="Ice temperature",         dim1="sigt",dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"T_pmp_aa",vecs%T_pmp_aa,  units="degC",   long_name="PMP Ice temperature",     dim1="sigt",dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"T_base",  ice%T_base,units="degC",   long_name="Basal temperature",       dim1="time",start=[n],ncid=ncid)
+        
         allocate(T_ice_aa(nzt+2))
-
         T_ice_aa(1)       = ice%T_base 
         T_ice_aa(2:nzt+1) = vecs%T_ice_aa(1:nzt) 
         T_ice_aa(nzt+2)   = ice%T_srf 
-
-        call nc_write(filename,"T_ice_aa",T_ice_aa,  units="degC",   long_name="Ice temperature",         dim1="sigt",dim2="time",start=[1,n],ncid=ncid)
-        call nc_write(filename,"T_base",  ice%T_base,units="degC",   long_name="Basal temperature",       dim1="time",start=[n],ncid=ncid)
+        call nc_write(filename,"T_ice_all",T_ice_aa,  units="degC",   long_name="Ice temperature",         dim1="sigt_all",dim2="time",start=[1,n],ncid=ncid)
         
         ! Close the netcdf file
         call nc_close(ncid)
