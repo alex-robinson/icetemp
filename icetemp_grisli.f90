@@ -12,7 +12,8 @@ module icetemp_grisli
     
     private
     public :: calc_icetemp_grisli_3D_up
-    public :: calc_icetemp_grisli_column_up 
+    public :: calc_icetemp_grisli_column_up
+     
 contains 
     
     subroutine calc_icetemp_grisli_3D_up(T_ice,T_rock,T_pmp,cp,ct,ux,uy,uz,Q_strn,Q_b, &
