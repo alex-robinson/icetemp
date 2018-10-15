@@ -249,6 +249,29 @@ contains
 
     end subroutine mali_temp_diffusion_column
 
+    subroutine advection_1D_firstorder(Q,u,sigt,dt)
+
+        implicit none 
+
+        real(prec), intent(INOUT) :: Q(:)     ! nzt
+        real(prec), intent(INOUT) :: u(:)     ! nzt+1 
+        real(prec), intent(INOUT) :: sigma(:) ! nzt+1 
+        real(prec), intent(IN)    :: sigt(:) 
+        real(prec), intent(IN)    :: dt 
+
+        ! Local variables
+        integer :: k, nz, nzt  
+        real(prec), alloctable :: Q_new(:) 
+
+        nz  = size(sigma,1)
+        nzt = size(sigt,1)
+
+        ! TO DO 
+        
+        return 
+
+    end subroutine advection_1D_firstorder
+
         subroutine temperature_matrix_elements(&
          deltat,                &
          nVertLevels,           &
