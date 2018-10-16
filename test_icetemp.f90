@@ -85,7 +85,7 @@ program test_icetemp
     dx      = 20e3         ! [m] Horizontal resolution (as input to imau solver - not currently used)
 
     solver     = "mali"       ! "grisli", "imau", "mali" 
-    is_celcius = .TRUE. 
+    is_celcius = .FALSE. 
     ! ===============================================================
 
     ! Initialize time and calculate number of time steps to iterate and 
@@ -144,7 +144,7 @@ program test_icetemp
 
             case("mali")
 
-                call calc_mali_temp_column(ice1%up%T_ice_aa,ice1%T_base,ice1%up%T_pmp_aa,ice1%up%cp_aa,ice1%up%kt_aa, &
+                call calc_mali_temp_column(ice1%up%T_ice_aa,ice1%up%T_pmp_aa,ice1%up%cp_aa,ice1%up%kt_aa, &
                                                 ice1%up%uz,ice1%up%Q_strn_aa,ice1%up%advecxy_aa,ice1%Q_b, &
                                                 ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%bmb,ice1%is_float, &
                                                 ice1%up%sigma,ice1%up%sigt,ice1%up%dsigt_a,ice1%up%dsigt_b,dt)
