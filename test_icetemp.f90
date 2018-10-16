@@ -139,8 +139,8 @@ program test_icetemp
 
 
                 call calc_icetemp_imau_column_up(ice1%up%T_ice,ice1%bmb,ice1%is_float,ice1%H_ice,ice1%T_srf,ice1%up%advecxy, &
-                                                 ice1%up%uz*0.0,ice1%up%uz*0.0,ice1%up%uz,0.0,0.0,0.0, &
-                                                 0.0,0.0,0.0,ice1%up%cp,ice1%up%kt,ice1%up%Q_strn, &
+                                                 ice1%up%uz*0.0,ice1%up%uz*0.0,ice1%up%uz,0.0_prec,0.0_prec,0.0_prec, &
+                                                 0.0_prec,0.0_prec,0.0_prec,ice1%up%cp,ice1%up%kt,ice1%up%Q_strn, &
                                                  ice1%Q_b,ice1%up%T_pmp,ice1%smb,ice1%Q_geo,ice1%up%sigma,dx,dt)
 
             case("mali")
@@ -358,12 +358,12 @@ contains
             !write(*,*) ice%up%sigma(k)
         end do 
 
-!         ice%up%sigma = ice%up%sigma**2
+        ice%up%sigma = ice%up%sigma**1.2
         
         ! NEW: calculate MALI-style sigma terms
         call calc_sigt_terms(ice%up%dsigt_a,ice%up%dsigt_b,ice%up%sigt,ice%up%sigma)
 
-        ice%up%sigt_all = [0.0,ice%up%sigt,1.0]
+        ice%up%sigt_all = [0.0_prec,ice%up%sigt,1.0_prec]
 
         ! Initialize remaining vectors to zero 
         ice%up%T_ice   = 0.0 
