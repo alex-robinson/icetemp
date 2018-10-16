@@ -145,7 +145,7 @@ program test_icetemp
 
             case("mali")
 
-                call mali_temp_diffusion_column(ice1%up%T_ice_aa,ice1%T_base,ice1%up%T_pmp_aa,ice1%up%cp,ice1%up%kt, &
+                call mali_temp_column(ice1%up%T_ice_aa,ice1%T_base,ice1%up%T_pmp_aa,ice1%up%cp,ice1%up%kt, &
                                                 ice1%up%uz,ice1%up%Q_strn,ice1%up%advecxy,ice1%Q_b, &
                                                 ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%bmb,ice1%is_float, &
                                                 ice1%up%sigma,ice1%up%sigt,ice1%up%dsigt_a,ice1%up%dsigt_b,dt)
