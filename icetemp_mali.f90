@@ -230,9 +230,9 @@ contains
                 dsigmaBot = sigt(1) - 0.0 
 
                 ! backward Euler flux basal boundary condition
-                subd(1) = -1.0_prec
+                subd(1) =  0.0_prec
                 diag(1) =  1.0_prec
-                supd(1) =  0.0_prec
+                supd(1) = -1.0_prec
                 rhs(1)  = (Q_b + Q_geo_now) * dsigmaBot*H_ice / ct_aa(1)
 
             end if   ! melting or frozen
