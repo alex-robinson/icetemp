@@ -358,7 +358,7 @@ contains
             !write(*,*) ice%up%sigma(k)
         end do 
 
-        ice%up%sigma = ice%up%sigma**1.2
+!         ice%up%sigma = ice%up%sigma**1.2
         
         ! NEW: calculate MALI-style sigma terms
         call calc_sigt_terms(ice%up%dsigt_a,ice%up%dsigt_b,ice%up%sigt,ice%up%sigma)

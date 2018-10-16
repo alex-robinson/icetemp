@@ -169,9 +169,9 @@ contains
         end do 
 
         ! Step 1: apply vertical advection 
-        call advection_1D_upwind(advecz_aa,T_ice,uz,H_ice,T_srf,T_base,sigt)
+!         call advection_1D_upwind(advecz_aa,T_ice,uz,H_ice,T_srf,T_base,sigt)
         !call advection_1D_upwind_2ndorder(advecz_aa,T_ice,uz,H_ice,T_srf,T_base,sigt)
-        !call advection_1D_laxwendroff(advecz_aa,T_ice,uz,H_ice,T_srf,T_base,sigt,dt)
+        call advection_1D_laxwendroff(advecz_aa,T_ice,uz,H_ice,T_srf,T_base,sigt,dt)
         !T_ice = T_ice - dt*advecz_aa 
 
         ! Step 2: apply vertical diffusion 
@@ -191,15 +191,6 @@ contains
         diag(2:nzt+1) = 1.0_prec - subd(2:nzt+1) - supd(2:nzt+1)
         rhs(2:nzt+1)  = T_ice(1:nzt) + Q_strn_aa(1:nzt)*dt - dt*advecz_aa 
 
-!         ! Populate interior points, reversing order (k=1 surface, k=nzt+2 base)
-!         do k = 2, nzt+1 
-!             ki = nzt + 2 - k 
-!             subd(k) = -factor(ki) * dsigt_a(ki)
-!             supd(k) = -factor(ki) * dsigt_b(ki)
-!             diag(k) = 1.0 - subd(k) - supd(k)
-!             rhs(k)  = T_ice(ki) + Q_strn_aa(ki)*dt 
-!         end do 
-        
         if (is_float) then
             ! Floating ice - set temperature equal to basal temperature 
 
@@ -248,10 +239,6 @@ contains
         !T_srf        = solution(1)
         T_ice(1:nzt) = solution(2:nzt+1)
         T_base       = solution(1)
-
-!         do k = 1, nzt 
-!             T_ice(k) = solution(nzt+2-k)
-!         end do 
 
         return 
 
@@ -447,13 +434,14 @@ contains
         k    = 1 
         u_aa = 0.5*(uz(k)+uz(k+1)) ! Get velocity at cell center
         
-        dx   = sigt(k) - 0.0 
-        Q_lo = 0.5*(Q(k)+Q_base) - (uz(k)*dt/(2.0*dx))*(Q(k)-Q_base)
-
+!         dx   = sigt(k) - 0.0 
+!         Q_lo = 0.5*(Q(k)+Q_base) - (uz(k)*dt/(2.0*dx))*(Q(k)-Q_base)
+        Q_lo = Q_base 
+        
         dx   = sigt(k) - 0.0 
         Q_hi = 0.5*(Q(k+1)+Q(k)) - (uz(k+1)*dt/(2.0*dx))*(Q(k+1)-Q(k))
         
-        dx   = 0.5*(sigt(k)+sigt(k+1)) - 0.0 
+        dx   = 0.5*(sigt(k)+sigt(k+1)) - 0.0        ! 0.5*(sigt(k)+sigt(k+1)) - 0.5*(sigt(k-1)+sigt(k))
         advecz(k) = u_aa*(Q_hi-Q_lo)/dx 
 
         ! Loop over internal cell centers
@@ -479,10 +467,11 @@ contains
         dx   = sigt(k) - sigt(k-1) 
         Q_lo = 0.5*(Q(k)+Q(k-1)) - (uz(k)*dt/(2.0*dx))*(Q(k)-Q(k-1))
 
-        dx   = 1.0 - sigt(k)
-        Q_hi = 0.5*(Q_srf+Q(k)) - (uz(k+1)*dt/(2.0*dx))*(Q_srf-Q(k))
-        
-        dx   = 1.0 - 0.5*(sigt(k-1)+sigt(k)) 
+!         dx   = 1.0 - sigt(k)
+!         Q_hi = 0.5*(Q_srf+Q(k)) - (uz(k+1)*dt/(2.0*dx))*(Q_srf-Q(k))
+        Q_hi = Q_srf 
+
+        dx   = 1.0 - 0.5*(sigt(k-1)+sigt(k))        ! 0.5*(sigt(k)+sigt(k+1)) - 0.5*(sigt(k-1)+sigt(k))
         advecz(k) = u_aa*(Q_hi-Q_lo)/dx 
          
         return 
