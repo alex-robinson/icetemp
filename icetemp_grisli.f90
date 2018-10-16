@@ -13,7 +13,7 @@ module icetemp_grisli
     private
     public :: calc_icetemp_grisli_3D_up
     public :: calc_icetemp_grisli_column_up
-     
+
 contains 
     
     subroutine calc_icetemp_grisli_3D_up(T_ice,T_rock,T_pmp,cp,ct,ux,uy,uz,Q_strn,Q_b, &
@@ -137,6 +137,8 @@ contains
         real(prec), allocatable :: aa(:), bb(:), cc(:), rr(:), hh(:) 
         real(prec), allocatable :: T(:), T_new(:) 
 
+        real(prec), allocatable :: advecz(:) 
+
         ! Store local vector sizes 
         nz      = size(T_ice,1)    ! Number of ice points 
         nzm     = size(T_rock,1)   ! Number of bedrock points 
@@ -182,6 +184,11 @@ contains
         ! Allocate local variables 
         allocate(aa(nzz),bb(nzz),cc(nzz),rr(nzz),hh(nzz))
         allocate(T(nzz),T_new(nzz))
+
+        allocate(advecz(nz))
+
+
+        !call advection_1D_upwind_interp(advecz,T_ice(2:nz-1),uz,H_ice,T_ice(nz),T_ice(1),sigma(2:nz-1),sigma)
 
         ! Populate local temperature column (ice+rock) 
         T(1:nzm)       = T_rock
@@ -315,10 +322,10 @@ contains
 !                 ct_haut = calc_harmonic_mean_wtd(ct(ki),ct(ki+1),sigma(ki)-sigma(ki-1),sigma(ki+1)-sigma(ki))
             
                 ! Vertical advection (centered)
-                aa(k) = -dzz_bas*ct_bas-uz(ki)*dah_bas/2.0
+                aa(k) = -dzz_bas*ct_bas   - uz(ki)*dah_bas/2.0
                 bb(k) = 1.0+dzz*(ct_bas+ct_haut)
-                cc(k) = -dzz_haut*ct_haut+uz(ki)*dah_haut/2.0
-                rr(k) = T(k) + dt*Q_strn(ki) - dt*advecxy(ki)
+                cc(k) = -dzz_haut*ct_haut + uz(ki)*dah_haut/2.0
+                rr(k) = T(k) + dt*Q_strn(ki) - dt*advecxy(ki) !- dt*advecz(ki)
 
             end do
             
@@ -818,6 +825,344 @@ contains
         return 
 
     end subroutine calc_icetemp_grisli_column_up_evensteps 
+
+    subroutine advection_1D_upwind_interp(advecz,Q,uz,H_ice,Q_srf,Q_base,sigt,sigma)
+        ! Calculate vertical advection term advecz, which enters
+        ! advection equation as
+        ! Q_new = Q - dt*advecz = Q - dt*u*dQ/dx
+
+        implicit none 
+
+        real(prec), intent(OUT)   :: advecz(:) ! nzt, cell centers
+        real(prec), intent(INOUT) :: Q(:)      ! nzt, cell centers
+        real(prec), intent(IN)    :: uz(:)     ! nzt+1 == nz, cell boundaries
+        real(prec), intent(IN)    :: H_ice     ! Ice thickness 
+        real(prec), intent(IN)    :: Q_srf     ! Surface value
+        real(prec), intent(IN)    :: Q_base    ! Base value
+        real(prec), intent(IN)    :: sigt(:)   ! nzt, cell centers
+        real(prec), intent(IN)    :: sigma(:)  ! nz (==nzt+1), cell borders
+        
+        ! Local variables
+        integer :: k, nzt   
+        real(prec) :: u_aa 
+        real(prec) :: dx 
+        
+        real(prec), allocatable :: x1(:), Q1(:), uz1(:), advecz1(:)  
+        integer :: nz1 
+        real(prec) :: dx1 
+
+
+        nzt = size(sigt,1)
+
+        nz1 = 21 
+        allocate(x1(nz1))
+        allocate(Q1(nz1))
+        allocate(uz1(nz1)) 
+        allocate(advecz1(nz1)) 
+
+        ! Generate hi-res axis 
+        do k = 1, nz1 
+            x1(k) = 0.0 + real(k-1,prec)* 1.0/real(nz1-1,prec)
+        end do 
+
+        dx1 = H_ice* (x1(2) - x1(1))
+
+        ! Get interpolated values 
+!         Q1  = interp_linear(x=[0.0_prec,sigt,1.0_prec],y=[Q_base,Q,Q_srf],xout=x1)
+!         uz1 = interp_linear(x=sigma,y=uz,xout=x1)
+        Q1  = interp_spline(x=[0.0_prec,sigt,1.0_prec],y=[Q_base,Q,Q_srf],xout=x1)
+        uz1 = interp_spline(x=sigma,y=uz,xout=x1)
+
+        ! At bottom of base layer
+        k = 1 
+        advecz1(k) = 0.0 
+
+        ! Loop over internal cell centers and perform upwind advection 
+        do k = 2, nz1-1 
+            u_aa = uz1(k)  ! Get velocity at cell center
+            if (u_aa > 0.0) then 
+                ! Upwind positive
+                advecz1(k) = 0.5*(uz1(k)+uz1(k+1))*(Q1(k+1)-Q1(k))/dx1   
+            else
+                ! Upwind negative
+                advecz1(k) = 0.5*(uz1(k-1)+uz1(k))*(Q1(k)-Q1(k-1))/dx1
+            end if 
+        end do 
+
+        ! At top of surface layer
+        k = nz1 
+        advecz1(k) = 0.0 
+
+        ! Reinterpolate to old axis 
+!         advecz = interp_linear(x=x1,y=advecz1,xout=sigt)
+        advecz = interp_spline(x=x1,y=advecz1,xout=sigma)
+        
+        return 
+
+    end subroutine advection_1D_upwind_interp
+    
+    ! 1D interpolation
+    function interp_spline(x,y,xout) result(yout)
+
+        implicit none 
+ 
+        real(prec), dimension(:), intent(IN) :: x, y
+        real(prec), dimension(:), intent(IN) :: xout
+        real(prec), dimension(size(xout)) :: yout 
+        real(prec), dimension(:), allocatable :: b, c, d 
+        real(prec) :: uh, dx, yh  
+        integer :: i, n, nout 
+
+        n    = size(x) 
+        nout = size(xout)
+
+        ! Get spline coefficients b, c, d
+        allocate(b(n),c(n),d(n))
+        call spline (x, y, b, c, d, n)
+
+        do i = 1, nout 
+            if (xout(i) .lt. x(1)) then
+                dx = x(1)-xout(i)
+                uh = x(1)+dx
+                yh = ispline(uh,x,y,b,c,d,n)
+                yout(i) = y(1) + (y(1)-yh)
+                !write(*,*) x(1), xout(i), dx, uh, y(1), yh, yout(i)
+            else if (xout(i) .gt. x(n)) then
+                dx = xout(i)-x(n)
+                uh = x(n)-dx
+                yh = ispline(uh,x,y,b,c,d,n)
+                yout(i) = y(n) + (y(n)-yh)
+                !write(*,*) x(n), xout(i), dx, uh, y(n), yh, yout(i)
+            else
+                yout(i) = ispline(xout(i), x, y, b, c, d, n)
+            end if 
+        end do 
+
+        return
+
+    contains 
+
+        subroutine spline (x, y, b, c, d, n)
+            !======================================================================
+            !  SOURCE: http://ww2.odu.edu/~agodunov/computing/programs/book2/Ch01/spline.f90
+            !  Calculate the coefficients b(i), c(i), and d(i), i=1,2,...,n
+            !  for cubic spline interpolation
+            !  s(x) = y(i) + b(i)*(x-x(i)) + c(i)*(x-x(i))**2 + d(i)*(x-x(i))**3
+            !  for  x(i) <= x <= x(i+1)
+            !  Alex G: January 2010
+            !----------------------------------------------------------------------
+            !  input..
+            !  x = the arrays of data abscissas (in strictly increasing order)
+            !  y = the arrays of data ordinates
+            !  n = size of the arrays xi() and yi() (n>=2)
+            !  output..
+            !  b, c, d  = arrays of spline coefficients
+            !  comments ...
+            !  spline.f90 program is based on fortran version of program spline.f
+            !  the accompanying function fspline can be used for interpolation
+            !======================================================================
+            implicit none
+            integer n
+            real(prec), dimension(:) :: x, y, b, c, d 
+            !real(prec) x(n), y(n), b(n), c(n), d(n)
+            integer i, j, gap
+            real(prec) h
+
+            gap = n-1
+            ! check input
+            if ( n < 2 ) return
+            if ( n < 3 ) then
+              b(1) = (y(2)-y(1))/(x(2)-x(1))   ! linear interpolation
+              c(1) = 0.
+              d(1) = 0.
+              b(2) = b(1)
+              c(2) = 0.
+              d(2) = 0.
+              return
+            end if
+            !
+            ! step 1: preparation
+            !
+            d(1) = x(2) - x(1)
+            c(2) = (y(2) - y(1))/d(1)
+            do i = 2, gap
+              d(i) = x(i+1) - x(i)
+              b(i) = 2.0*(d(i-1) + d(i))
+              c(i+1) = (y(i+1) - y(i))/d(i)
+              c(i) = c(i+1) - c(i)
+            end do
+            !
+            ! step 2: end conditions 
+            !
+            b(1) = -d(1)
+            b(n) = -d(n-1)
+            c(1) = 0.0
+            c(n) = 0.0
+            if(n /= 3) then
+              c(1) = c(3)/(x(4)-x(2)) - c(2)/(x(3)-x(1))
+              c(n) = c(n-1)/(x(n)-x(n-2)) - c(n-2)/(x(n-1)-x(n-3))
+              c(1) = c(1)*d(1)**2/(x(4)-x(1))
+              c(n) = -c(n)*d(n-1)**2/(x(n)-x(n-3))
+            end if
+            !
+            ! step 3: forward elimination 
+            !
+            do i = 2, n
+              h = d(i-1)/b(i-1)
+              b(i) = b(i) - h*d(i-1)
+              c(i) = c(i) - h*c(i-1)
+            end do
+            !
+            ! step 4: back substitution
+            !
+            c(n) = c(n)/b(n)
+            do j = 1, gap
+              i = n-j
+              c(i) = (c(i) - d(i)*c(i+1))/b(i)
+            end do
+            !
+            ! step 5: compute spline coefficients
+            !
+            b(n) = (y(n) - y(gap))/d(gap) + d(gap)*(c(gap) + 2.0*c(n))
+            do i = 1, gap
+              b(i) = (y(i+1) - y(i))/d(i) - d(i)*(c(i+1) + 2.0*c(i))
+              d(i) = (c(i+1) - c(i))/d(i)
+              c(i) = 3.*c(i)
+            end do
+            c(n) = 3.0*c(n)
+            d(n) = d(n-1)
+        end subroutine spline
+
+        function ispline(u, x, y, b, c, d, n)
+            !======================================================================
+            ! SOURCE: http://ww2.odu.edu/~agodunov/computing/programs/book2/Ch01/spline.f90
+            ! function ispline evaluates the cubic spline interpolation at point z
+            ! ispline = y(i)+b(i)*(u-x(i))+c(i)*(u-x(i))**2+d(i)*(u-x(i))**3
+            ! where  x(i) <= u <= x(i+1)
+            !----------------------------------------------------------------------
+            ! input..
+            ! u       = the abscissa at which the spline is to be evaluated
+            ! x, y    = the arrays of given data points
+            ! b, c, d = arrays of spline coefficients computed by spline
+            ! n       = the number of data points
+            ! output:
+            ! ispline = interpolated value at point u
+            !=======================================================================
+            implicit none
+            real(prec) ispline
+            integer n
+            ! real(prec)  u, x(n), y(n), b(n), c(n), d(n)
+            real(prec) :: u 
+            real(prec), dimension(:) :: x, y, b, c, d 
+            integer i, j, k
+            real(prec) dx
+
+            ! if u is ouside the x() interval take a boundary value (left or right)
+            if(u <= x(1)) then
+              ispline = y(1)
+              return
+            end if
+            if(u >= x(n)) then
+              ispline = y(n)
+              return
+            end if
+
+            !*
+            !  binary search for for i, such that x(i) <= u <= x(i+1)
+            !*
+            i = 1
+            j = n+1
+            do while (j > i+1)
+              k = (i+j)/2
+              if(u < x(k)) then
+                j=k
+                else
+                i=k
+               end if
+            end do
+            !*
+            !  evaluate spline interpolation
+            !*
+            dx = u - x(i)
+            ispline = y(i) + dx*(b(i) + dx*(c(i) + dx*d(i)))
+        end function ispline
+
+    end function interp_spline 
+
+    function interp_linear(x,y,xout) result(yout)
+        ! Interpolate y from ordered x to ordered xout positions
+
+        implicit none 
+ 
+        real(prec), dimension(:), intent(IN) :: x, y
+        real(prec), dimension(:), intent(IN) :: xout
+        real(prec), dimension(size(xout)) :: yout 
+        integer :: i, j, n, nout 
+
+        n    = size(x) 
+        nout = size(xout)
+
+!         write(*,*) minval(x), maxval(x), n, nout
+
+        do i = 1, nout 
+            if (xout(i) .lt. x(1)) then
+                yout(i) = y(1)
+!                 write(*,*) 1, xout(i)
+            else if (xout(i) .gt. x(n)) then
+                yout(i) = y(n)
+!                 write(*,*) 2, xout(i)
+            else
+                do j = 1, n 
+                    if (x(j) .ge. xout(i)) exit 
+                end do
+
+                if (j .eq. 1) then 
+                    yout(i) = y(1) 
+!                     write(*,*) 3, xout(i)
+                else if (j .eq. n+1) then 
+                    yout(i) = y(n)
+!                     write(*,*) 4, xout(i)
+                else 
+                    yout(i) = interp_linear_internal(x(j-1:j),y(j-1:j),xout(i))
+!                     write(*,*) 5, xout(i)
+                end if 
+            end if 
+        end do
+
+        return 
+
+    contains 
+
+            ! ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        !   Subroutine :  interp_linear_internal
+        !   Author     :  Alex Robinson
+        !   Purpose    :  Interpolates for the y value at the desired x value, 
+        !                 given x and y values around the desired point.
+        ! ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        function interp_linear_internal(x,y,xout) result(yout)
+
+            implicit none
+
+            real(prec), intent(IN)  :: x(2), y(2), xout
+            real(prec) :: yout
+            real(prec) :: alph
+
+            if ( xout .lt. x(1) .or. xout .gt. x(2) ) then
+                write(*,*) "interp1: xout < x0 or xout > x1 !"
+                write(*,*) "xout = ",xout
+                write(*,*) "x0   = ",x(1)
+                write(*,*) "x1   = ",x(2)
+                stop
+            end if
+
+            alph = (xout - x(1)) / (x(2) - x(1))
+            yout = y(1) + alph*(y(2) - y(1))
+
+            return
+
+        end function interp_linear_internal 
+
+    end function interp_linear
 
 end module icetemp_grisli 
 

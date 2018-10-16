@@ -169,39 +169,16 @@ contains
         end do 
 
         ! Step 1: apply vertical advection 
-        call advection_1D_upwind(advecz_aa,T_ice,uz,H_ice,T_srf,T_base,sigt)
+        advecz_aa = 0.0
+!         call advection_1D_upwind(advecz_aa,T_ice,uz,H_ice,T_srf,T_base,sigt)
+        !call advection_1D_upwind_interp(advecz_aa,T_ice,uz,H_ice,T_srf,T_base,sigt,sigma)
         !call advection_1D_upwind_2ndorder(advecz_aa,T_ice,uz,H_ice,T_srf,T_base,sigt)
 !         call advection_1D_laxwendroff2(advecz_aa,T_ice,uz,H_ice,T_srf,T_base,sigt,dt)
         T_ice = T_ice - dt*advecz_aa 
 
         ! Step 2: apply vertical diffusion 
-
-        ! Ice surface 
-        subd(nzt+2) = 0.0_prec
-        diag(nzt+2) = 1.0_prec
-        supd(nzt+2) = 0.0_prec
-        rhs(nzt+2)  = T_srf
-
-        ! Ice interior, layers 1:nzt  (matrix elements 2:nzt+1)
-
-        do k = 2, nzt+1
-            ki = k-1 
-
-            fac     = dt * ct_aa(ki) / (rho_ice*cp_aa(ki)) / H_ice**2
-            subd(k) = -fac * dsigt_a(ki)
-            supd(k) = -fac * dsigt_b(ki)
-            diag(k) = 1.0_prec - subd(k) - supd(k)
-            rhs(k)  = T_ice(ki) + Q_strn_aa(ki)*dt !- dt*advecz_aa 
         
-        end do 
-
-!         factor = dt * ct_aa / (rho_ice*cp_aa) / H_ice**2
-
-!         subd(2:nzt+1) = -factor * dsigt_a(1:nzt)
-!         supd(2:nzt+1) = -factor * dsigt_b(1:nzt)
-!         diag(2:nzt+1) = 1.0_prec - subd(2:nzt+1) - supd(2:nzt+1)
-!         rhs(2:nzt+1)  = T_ice(1:nzt) + Q_strn_aa(1:nzt)*dt !- dt*advecz_aa 
-
+        ! Ice base
         if (is_float) then
             ! Floating ice - set temperature equal to basal temperature 
 
@@ -243,6 +220,34 @@ contains
 
         end if  ! floating or grounded 
 
+        ! Ice interior, layers 1:nzt  (matrix elements 2:nzt+1)
+
+        do k = 2, nzt+1
+            ki = k-1 
+
+!             fac     = dt * ct_aa(ki) / (rho_ice*cp_aa(ki)) / H_ice**2
+!             subd(k) = -fac * dsigt_a(ki)
+!             supd(k) = -fac * dsigt_b(ki)
+!             diag(k) = 1.0_prec - (subd(k) + supd(k))
+!             rhs(k)  = T_ice(ki) + dt*Q_strn_aa(ki) !- dt*advecz_aa 
+            
+            fac     = dt * ct_aa(ki) / (rho_ice*cp_aa(ki)) / H_ice**2
+!             subd(k) = -fac*dsigt_a(ki) - 0.5*(uz(k-1)+uz(k))*dt / (2.0*H_ice*(sigma(k)-sigma(k-1)))
+!             supd(k) = -fac*dsigt_b(ki) + 0.5*(uz(k-1)+uz(k))*dt / (2.0*H_ice*(sigma(k)-sigma(k-1)))
+            subd(k) = -fac*dsigt_a(ki) - 0.5*(uz(k-1)+uz(k))*dt / (2.0*H_ice*(sigma(k)-sigma(k-1)))
+            supd(k) = -fac*dsigt_b(ki) + 0.5*(uz(k-1)+uz(k))*dt / (2.0*H_ice*(sigma(k)-sigma(k-1)))
+            diag(k) = 1.0_prec - (-fac*dsigt_a(ki)) - (-fac*dsigt_b(ki))
+!             diag(k) = 1.0_prec - (subd(k) + supd(k))
+            rhs(k)  = T_ice(ki) + dt*Q_strn_aa(ki) !- dt*advecz_aa 
+
+        end do 
+
+        ! Ice surface 
+        subd(nzt+2) = 0.0_prec
+        diag(nzt+2) = 1.0_prec
+        supd(nzt+2) = 0.0_prec
+        rhs(nzt+2)  = T_srf
+
         ! Call solver 
         call tridiag_solver(subd,diag,supd,solution,rhs)
 
@@ -255,6 +260,81 @@ contains
 
     end subroutine mali_temp_diffusion_column
 
+    subroutine advection_1D_upwind_interp(advecz,Q,uz,H_ice,Q_srf,Q_base,sigt,sigma)
+        ! Calculate vertical advection term advecz, which enters
+        ! advection equation as
+        ! Q_new = Q - dt*advecz = Q - dt*u*dQ/dx
+
+        implicit none 
+
+        real(prec), intent(OUT)   :: advecz(:) ! nzt, cell centers
+        real(prec), intent(INOUT) :: Q(:)      ! nzt, cell centers
+        real(prec), intent(IN)    :: uz(:)     ! nzt+1 == nz, cell boundaries
+        real(prec), intent(IN)    :: H_ice     ! Ice thickness 
+        real(prec), intent(IN)    :: Q_srf     ! Surface value
+        real(prec), intent(IN)    :: Q_base    ! Base value
+        real(prec), intent(IN)    :: sigt(:)   ! nzt, cell centers
+        real(prec), intent(IN)    :: sigma(:)  ! nz (==nzt+1), cell borders
+        
+        ! Local variables
+        integer :: k, nzt   
+        real(prec) :: u_aa 
+        real(prec) :: dx 
+        
+        real(prec), allocatable :: x1(:), Q1(:), uz1(:), advecz1(:)  
+        integer :: nz1 
+        real(prec) :: dx1 
+
+
+        nzt = size(sigt,1)
+
+        nz1 = 21 
+        allocate(x1(nz1))
+        allocate(Q1(nz1))
+        allocate(uz1(nz1)) 
+        allocate(advecz1(nz1)) 
+
+        ! Generate hi-res axis 
+        do k = 1, nz1 
+            x1(k) = 0.0 + real(k-1,prec)* 1.0/real(nz1-1,prec)
+        end do 
+
+        dx1 = H_ice* (x1(2) - x1(1))
+
+        ! Get interpolated values 
+!         Q1  = interp_linear(x=[0.0_prec,sigt,1.0_prec],y=[Q_base,Q,Q_srf],xout=x1)
+!         uz1 = interp_linear(x=sigma,y=uz,xout=x1)
+        Q1  = interp_spline(x=[0.0_prec,sigt,1.0_prec],y=[Q_base,Q,Q_srf],xout=x1)
+        uz1 = interp_spline(x=sigma,y=uz,xout=x1)
+
+        ! At bottom of base layer
+        k = 1 
+        advecz1(k) = 0.0 
+
+        ! Loop over internal cell centers and perform upwind advection 
+        do k = 2, nz1-1 
+            u_aa = uz1(k)  ! Get velocity at cell center
+            if (u_aa > 0.0) then 
+                ! Upwind positive
+                advecz1(k) = 0.5*(uz1(k)+uz1(k+1))*(Q1(k+1)-Q1(k))/dx1   
+            else
+                ! Upwind negative
+                advecz1(k) = 0.5*(uz1(k-1)+uz1(k))*(Q1(k)-Q1(k-1))/dx1
+            end if 
+        end do 
+
+        ! At top of surface layer
+        k = nz1 
+        advecz1(k) = 0.0 
+
+        ! Reinterpolate to old axis 
+!         advecz = interp_linear(x=x1,y=advecz1,xout=sigt)
+        advecz = interp_spline(x=x1,y=advecz1,xout=sigt)
+        
+        return 
+
+    end subroutine advection_1D_upwind_interp
+    
     subroutine advection_1D_upwind(advecz,Q,uz,H_ice,Q_srf,Q_base,sigt)
         ! Calculate vertical advection term advecz, which enters
         ! advection equation as
@@ -317,7 +397,6 @@ contains
             advecz(k) = uz(k)*(Q(k)-Q(k-1))/dx
         end if 
 
-        ! Replace old 
         return 
 
     end subroutine advection_1D_upwind
@@ -543,164 +622,6 @@ contains
 
     end subroutine advection_1D_laxwendroff2
 
-        subroutine temperature_matrix_elements(&
-         deltat,                &
-         nVertLevels,           &
-         layerCenterSigma,      &
-         dsigmaTerm,            &
-         iceCond_kt,            &
-         floatingMask,          &
-         thickness,             &
-         temperature,           &
-         surfaceTemperature,    &
-         basalTemperature,      &
-         heatDissipation,       &
-         basalHeatFlux,         &
-         basalFrictionFlux,     &
-         subd,                  &
-         diag,                  &
-         supd,                  &
-         rhs)
-
-      ! Note: Matrix elements (subd, supd, diag, rhs) are indexed from 1 to nVertLevels+2,
-      !       whereas temperature is indexed from 1 to nVertLevels.
-      !       The first row of the matrix is the equation for surfaceTemperature, and
-      !       the last row is the equation for basalTemperature.
-
-      !-----------------------------------------------------------------
-      ! input variables
-      !-----------------------------------------------------------------
-
-      real(kind=prec), intent(in) :: &
-           deltat                   !< Input: time step (s)
-
-      integer, intent(in) :: &
-           nVertLevels              !< Input: number of vertical layers
-
-      real(kind=prec), dimension(nVertLevels), intent(in) :: &
-           layerCentersigma         !< Input: sigma coordinate at layer midpoints
-
-      real(kind=prec), dimension(:,:), intent(in) :: &
-           dsigmaTerm               !< Input: vertical grid quantities
-
-      real(kind=prec), dimension(nVertLevels), intent(in) :: &
-           iceCond_kt               !< Input: vertical grid quantities
-
-      integer, intent(in) :: &
-           floatingMask             !< Input: = 1 where ice is floating, else = 0
-
-      real(kind=prec), intent(in) ::  &
-           thickness                !< Input: ice thickness (m)
-
-      real(kind=prec), dimension(nVertLevels), intent(in) :: &
-           temperature              !< Input: ice temperature (deg C)
-
-      real(kind=prec), intent(in) :: &
-           surfaceTemperature,    & !< Input: surface ice temperature (deg C)
-           basalTemperature         !< Input: basal ice temperature (deg C)
-
-      real(kind=prec), dimension(nVertLevels), intent(in) :: &
-           heatDissipation          !< Input: interior heat dissipation (deg/s)
-
-      real(kind=prec), intent(in) :: &
-           basalHeatFlux            !< Input: geothermal heat flux (W m-2), positive up
-
-      real(kind=prec), intent(in) :: &
-           basalFrictionFlux        !< Input: basal friction heat flux (W m-2), >= 0
-
-      !-----------------------------------------------------------------
-      ! output variables
-      !-----------------------------------------------------------------
-
-      real(kind=prec), dimension(:), intent(out) :: &
-           subd, diag, supd, rhs    !< Output: tridiagonal matrix elements
-
-      !-----------------------------------------------------------------
-      ! local variables
-      !-----------------------------------------------------------------
-
-      real(kind=prec) :: pmpTemperatureBed  ! pressure melting temperature at bed
-      real(kind=prec) :: factor             ! term in tridiagonal matrix
-      real(kind=prec) :: dsigmaBot          ! bottom layer thickness in sigma coords
-
-      real(kind=prec) :: iceConductivity   
-      real(kind=prec) :: cp_ice   
-      
-
-      ! Get mean column ice conductivity 
-      iceConductivity = sum(iceCond_kt) / size(iceCond_kt,1)
-
-
-      ! Compute subdiagonal, diagonal, and superdiagonal matrix elements,
-      ! along with the right-hand-side vector
-
-      ! upper boundary: set to surfaceTemperature
-
-      subd(1) = 0.0_prec
-      diag(1) = 1.0_prec
-      supd(1) = 0.0_prec
-      rhs(1)  = surfaceTemperature
-
-      ! ice interior, layers 1:nVertLevels  (matrix elements 2:nVertLevels+1)
-
-      factor = deltat * iceConductivity / (rho_ice*cp_ice) / thickness**2
-
-      subd(2:nVertLevels+1) = -factor * dsigmaTerm(1:nVertLevels,1)
-      supd(2:nVertLevels+1) = -factor * dsigmaTerm(1:nVertLevels,2)
-      diag(2:nVertLevels+1) = 1.0_prec - subd(2:nVertLevels+1) - supd(2:nVertLevels+1)
-      rhs(2:nVertLevels+1)  = temperature(1:nVertLevels) + heatDissipation(1:nVertLevels)*deltat
-
-      ! basal boundary:
-      ! for grounded ice, a heat flux is applied
-      ! for floating ice, the basal temperature is held constant
-
-      !Note: If T(upn) < T_pmp, then require dT/dsigma = H/k * (G + taub*ubas)
-      !       That is, net heat flux at lower boundary must equal zero.
-      !      If T(upn) >= Tpmp, then set T(upn) = Tpmp
-
-      if (floatingMask == 1) then
-
-         subd(nVertLevels+2) = 0.0_prec
-         diag(nVertLevels+2) = 1.0_prec
-         supd(nVertLevels+2) = 0.0_prec
-         rhs(nVertLevels+2)  = basalTemperature
-
-      else    ! grounded ice
-
-        ! ajr: commented out for compiling
-         !call pressure_melting_point(thickness, pmpTemperatureBed)
-
-         if (abs(basalTemperature - pmpTemperatureBed) < 0.001_prec) then
-
-            ! hold basal temperature at pressure melting point
-
-            subd(nVertLevels+2) = 0.0_prec
-            diag(nVertLevels+2) = 1.0_prec
-            supd(nVertLevels+2) = 0.0_prec
-            rhs(nVertLevels+2)  = pmpTemperatureBed
-
-         else   ! frozen at bed
-                ! maintain balance of heat sources and sinks
-                ! (conductive flux, geothermal flux, and basal friction)
-
-            ! Note: basalHeatFlux is generally >= 0, since defined as positive up
-
-            ! calculate dsigma for the bottom layer between the basal boundary and the temperature point above
-            dsigmaBot = 1.0_prec - layerCentersigma(nVertLevels)
-
-            ! backward Euler flux basal boundary condition
-            subd(nVertLevels+2) = -1.0_prec
-            diag(nVertLevels+2) =  1.0_prec
-            supd(nVertLevels+2) =  0.0_prec
-            rhs(nVertLevels+2)  = (basalFrictionFlux + basalHeatFlux) * dsigmaBot*thickness / iceConductivity
-
-         endif   ! melting or frozen
-
-      end if     ! floating or grounded
-
-    end subroutine temperature_matrix_elements
-
-
     subroutine calc_sigt_terms(dsig_a,dsig_b,sigmamid,sigma)
         ! sigma = depth axis (1: base, nz: surface)
         ! Calculate ak, bk terms as defined in Hoffmann et al (2018)
@@ -800,6 +721,271 @@ contains
         return 
 
     end subroutine tridiag_solver
+
+
+
+    ! 1D interpolation
+    function interp_spline(x,y,xout) result(yout)
+
+        implicit none 
+ 
+        real(prec), dimension(:), intent(IN) :: x, y
+        real(prec), dimension(:), intent(IN) :: xout
+        real(prec), dimension(size(xout)) :: yout 
+        real(prec), dimension(:), allocatable :: b, c, d 
+        real(prec) :: uh, dx, yh  
+        integer :: i, n, nout 
+
+        n    = size(x) 
+        nout = size(xout)
+
+        ! Get spline coefficients b, c, d
+        allocate(b(n),c(n),d(n))
+        call spline (x, y, b, c, d, n)
+
+        do i = 1, nout 
+            if (xout(i) .lt. x(1)) then
+                dx = x(1)-xout(i)
+                uh = x(1)+dx
+                yh = ispline(uh,x,y,b,c,d,n)
+                yout(i) = y(1) + (y(1)-yh)
+                !write(*,*) x(1), xout(i), dx, uh, y(1), yh, yout(i)
+            else if (xout(i) .gt. x(n)) then
+                dx = xout(i)-x(n)
+                uh = x(n)-dx
+                yh = ispline(uh,x,y,b,c,d,n)
+                yout(i) = y(n) + (y(n)-yh)
+                !write(*,*) x(n), xout(i), dx, uh, y(n), yh, yout(i)
+            else
+                yout(i) = ispline(xout(i), x, y, b, c, d, n)
+            end if 
+        end do 
+
+        return
+
+    contains 
+
+        subroutine spline (x, y, b, c, d, n)
+            !======================================================================
+            !  SOURCE: http://ww2.odu.edu/~agodunov/computing/programs/book2/Ch01/spline.f90
+            !  Calculate the coefficients b(i), c(i), and d(i), i=1,2,...,n
+            !  for cubic spline interpolation
+            !  s(x) = y(i) + b(i)*(x-x(i)) + c(i)*(x-x(i))**2 + d(i)*(x-x(i))**3
+            !  for  x(i) <= x <= x(i+1)
+            !  Alex G: January 2010
+            !----------------------------------------------------------------------
+            !  input..
+            !  x = the arrays of data abscissas (in strictly increasing order)
+            !  y = the arrays of data ordinates
+            !  n = size of the arrays xi() and yi() (n>=2)
+            !  output..
+            !  b, c, d  = arrays of spline coefficients
+            !  comments ...
+            !  spline.f90 program is based on fortran version of program spline.f
+            !  the accompanying function fspline can be used for interpolation
+            !======================================================================
+            implicit none
+            integer n
+            real(prec), dimension(:) :: x, y, b, c, d 
+            !real(prec) x(n), y(n), b(n), c(n), d(n)
+            integer i, j, gap
+            real(prec) h
+
+            gap = n-1
+            ! check input
+            if ( n < 2 ) return
+            if ( n < 3 ) then
+              b(1) = (y(2)-y(1))/(x(2)-x(1))   ! linear interpolation
+              c(1) = 0.
+              d(1) = 0.
+              b(2) = b(1)
+              c(2) = 0.
+              d(2) = 0.
+              return
+            end if
+            !
+            ! step 1: preparation
+            !
+            d(1) = x(2) - x(1)
+            c(2) = (y(2) - y(1))/d(1)
+            do i = 2, gap
+              d(i) = x(i+1) - x(i)
+              b(i) = 2.0*(d(i-1) + d(i))
+              c(i+1) = (y(i+1) - y(i))/d(i)
+              c(i) = c(i+1) - c(i)
+            end do
+            !
+            ! step 2: end conditions 
+            !
+            b(1) = -d(1)
+            b(n) = -d(n-1)
+            c(1) = 0.0
+            c(n) = 0.0
+            if(n /= 3) then
+              c(1) = c(3)/(x(4)-x(2)) - c(2)/(x(3)-x(1))
+              c(n) = c(n-1)/(x(n)-x(n-2)) - c(n-2)/(x(n-1)-x(n-3))
+              c(1) = c(1)*d(1)**2/(x(4)-x(1))
+              c(n) = -c(n)*d(n-1)**2/(x(n)-x(n-3))
+            end if
+            !
+            ! step 3: forward elimination 
+            !
+            do i = 2, n
+              h = d(i-1)/b(i-1)
+              b(i) = b(i) - h*d(i-1)
+              c(i) = c(i) - h*c(i-1)
+            end do
+            !
+            ! step 4: back substitution
+            !
+            c(n) = c(n)/b(n)
+            do j = 1, gap
+              i = n-j
+              c(i) = (c(i) - d(i)*c(i+1))/b(i)
+            end do
+            !
+            ! step 5: compute spline coefficients
+            !
+            b(n) = (y(n) - y(gap))/d(gap) + d(gap)*(c(gap) + 2.0*c(n))
+            do i = 1, gap
+              b(i) = (y(i+1) - y(i))/d(i) - d(i)*(c(i+1) + 2.0*c(i))
+              d(i) = (c(i+1) - c(i))/d(i)
+              c(i) = 3.*c(i)
+            end do
+            c(n) = 3.0*c(n)
+            d(n) = d(n-1)
+        end subroutine spline
+
+        function ispline(u, x, y, b, c, d, n)
+            !======================================================================
+            ! SOURCE: http://ww2.odu.edu/~agodunov/computing/programs/book2/Ch01/spline.f90
+            ! function ispline evaluates the cubic spline interpolation at point z
+            ! ispline = y(i)+b(i)*(u-x(i))+c(i)*(u-x(i))**2+d(i)*(u-x(i))**3
+            ! where  x(i) <= u <= x(i+1)
+            !----------------------------------------------------------------------
+            ! input..
+            ! u       = the abscissa at which the spline is to be evaluated
+            ! x, y    = the arrays of given data points
+            ! b, c, d = arrays of spline coefficients computed by spline
+            ! n       = the number of data points
+            ! output:
+            ! ispline = interpolated value at point u
+            !=======================================================================
+            implicit none
+            real(prec) ispline
+            integer n
+            ! real(prec)  u, x(n), y(n), b(n), c(n), d(n)
+            real(prec) :: u 
+            real(prec), dimension(:) :: x, y, b, c, d 
+            integer i, j, k
+            real(prec) dx
+
+            ! if u is ouside the x() interval take a boundary value (left or right)
+            if(u <= x(1)) then
+              ispline = y(1)
+              return
+            end if
+            if(u >= x(n)) then
+              ispline = y(n)
+              return
+            end if
+
+            !*
+            !  binary search for for i, such that x(i) <= u <= x(i+1)
+            !*
+            i = 1
+            j = n+1
+            do while (j > i+1)
+              k = (i+j)/2
+              if(u < x(k)) then
+                j=k
+                else
+                i=k
+               end if
+            end do
+            !*
+            !  evaluate spline interpolation
+            !*
+            dx = u - x(i)
+            ispline = y(i) + dx*(b(i) + dx*(c(i) + dx*d(i)))
+        end function ispline
+
+    end function interp_spline 
+
+    function interp_linear(x,y,xout) result(yout)
+        ! Interpolate y from ordered x to ordered xout positions
+
+        implicit none 
+ 
+        real(prec), dimension(:), intent(IN) :: x, y
+        real(prec), dimension(:), intent(IN) :: xout
+        real(prec), dimension(size(xout)) :: yout 
+        integer :: i, j, n, nout 
+
+        n    = size(x) 
+        nout = size(xout)
+
+!         write(*,*) minval(x), maxval(x), n, nout
+
+        do i = 1, nout 
+            if (xout(i) .lt. x(1)) then
+                yout(i) = y(1)
+!                 write(*,*) 1, xout(i)
+            else if (xout(i) .gt. x(n)) then
+                yout(i) = y(n)
+!                 write(*,*) 2, xout(i)
+            else
+                do j = 1, n 
+                    if (x(j) .ge. xout(i)) exit 
+                end do
+
+                if (j .eq. 1) then 
+                    yout(i) = y(1) 
+!                     write(*,*) 3, xout(i)
+                else if (j .eq. n+1) then 
+                    yout(i) = y(n)
+!                     write(*,*) 4, xout(i)
+                else 
+                    yout(i) = interp_linear_internal(x(j-1:j),y(j-1:j),xout(i))
+!                     write(*,*) 5, xout(i)
+                end if 
+            end if 
+        end do
+
+        return 
+
+    contains 
+
+            ! ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        !   Subroutine :  interp_linear_internal
+        !   Author     :  Alex Robinson
+        !   Purpose    :  Interpolates for the y value at the desired x value, 
+        !                 given x and y values around the desired point.
+        ! ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        function interp_linear_internal(x,y,xout) result(yout)
+
+            implicit none
+
+            real(prec), intent(IN)  :: x(2), y(2), xout
+            real(prec) :: yout
+            real(prec) :: alph
+
+            if ( xout .lt. x(1) .or. xout .gt. x(2) ) then
+                write(*,*) "interp1: xout < x0 or xout > x1 !"
+                write(*,*) "xout = ",xout
+                write(*,*) "x0   = ",x(1)
+                write(*,*) "x1   = ",x(2)
+                stop
+            end if
+
+            alph = (xout - x(1)) / (x(2) - x(1))
+            yout = y(1) + alph*(y(2) - y(1))
+
+            return
+
+        end function interp_linear_internal 
+
+    end function interp_linear
 
 end module icetemp_mali
 
