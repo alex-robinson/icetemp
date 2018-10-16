@@ -129,7 +129,7 @@ contains
         real(prec), allocatable :: rhs(:)      ! nzz 
         real(prec), allocatable :: solution(:) ! nzz
         real(prec), allocatable :: factor(:)   ! nzt 
-        real(prec) :: dsigmaBot
+        real(prec) :: dsigmaBot, fac 
         
         nz  = size(sigma,1)
         nzt = size(sigt,1)   ! == nz-1, only layer midpoints where T is defined
@@ -169,10 +169,10 @@ contains
         end do 
 
         ! Step 1: apply vertical advection 
-!         call advection_1D_upwind(advecz_aa,T_ice,uz,H_ice,T_srf,T_base,sigt)
+        call advection_1D_upwind(advecz_aa,T_ice,uz,H_ice,T_srf,T_base,sigt)
         !call advection_1D_upwind_2ndorder(advecz_aa,T_ice,uz,H_ice,T_srf,T_base,sigt)
-        call advection_1D_laxwendroff(advecz_aa,T_ice,uz,H_ice,T_srf,T_base,sigt,dt)
-        !T_ice = T_ice - dt*advecz_aa 
+!         call advection_1D_laxwendroff2(advecz_aa,T_ice,uz,H_ice,T_srf,T_base,sigt,dt)
+        T_ice = T_ice - dt*advecz_aa 
 
         ! Step 2: apply vertical diffusion 
 
@@ -184,12 +184,23 @@ contains
 
         ! Ice interior, layers 1:nzt  (matrix elements 2:nzt+1)
 
-        factor = dt * ct_aa / (rho_ice*cp_aa) / H_ice**2
+        do k = 2, nzt+1
+            ki = k-1 
 
-        subd(2:nzt+1) = -factor * dsigt_a(1:nzt)
-        supd(2:nzt+1) = -factor * dsigt_b(1:nzt)
-        diag(2:nzt+1) = 1.0_prec - subd(2:nzt+1) - supd(2:nzt+1)
-        rhs(2:nzt+1)  = T_ice(1:nzt) + Q_strn_aa(1:nzt)*dt - dt*advecz_aa 
+            fac     = dt * ct_aa(ki) / (rho_ice*cp_aa(ki)) / H_ice**2
+            subd(k) = -fac * dsigt_a(ki)
+            supd(k) = -fac * dsigt_b(ki)
+            diag(k) = 1.0_prec - subd(k) - supd(k)
+            rhs(k)  = T_ice(ki) + Q_strn_aa(ki)*dt !- dt*advecz_aa 
+        
+        end do 
+
+!         factor = dt * ct_aa / (rho_ice*cp_aa) / H_ice**2
+
+!         subd(2:nzt+1) = -factor * dsigt_a(1:nzt)
+!         supd(2:nzt+1) = -factor * dsigt_b(1:nzt)
+!         diag(2:nzt+1) = 1.0_prec - subd(2:nzt+1) - supd(2:nzt+1)
+!         rhs(2:nzt+1)  = T_ice(1:nzt) + Q_strn_aa(1:nzt)*dt !- dt*advecz_aa 
 
         if (is_float) then
             ! Floating ice - set temperature equal to basal temperature 
@@ -437,7 +448,7 @@ contains
 !         dx   = sigt(k) - 0.0 
 !         Q_lo = 0.5*(Q(k)+Q_base) - (uz(k)*dt/(2.0*dx))*(Q(k)-Q_base)
         Q_lo = Q_base 
-        
+
         dx   = sigt(k) - 0.0 
         Q_hi = 0.5*(Q(k+1)+Q(k)) - (uz(k+1)*dt/(2.0*dx))*(Q(k+1)-Q(k))
         
@@ -477,6 +488,60 @@ contains
         return 
 
     end subroutine advection_1D_laxwendroff
+
+    subroutine advection_1D_laxwendroff2(advecz,Q,uz,H_ice,Q_srf,Q_base,sigt,dt)
+        ! Calculate vertical advection term advecz, which enters
+        ! advection equation as
+        ! Q_new = Q - dt*advecz = Q - dt*u*dQ/dx
+        ! from: https://www.12000.org/my_notes/advection_PDE/final_solution.pdf
+
+        ! BROKEN 
+
+        implicit none 
+
+        real(prec), intent(OUT)   :: advecz(:) ! nzt, cell centers
+        real(prec), intent(INOUT) :: Q(:)      ! nzt, cell centers
+        real(prec), intent(IN)    :: uz(:)     ! nzt+1 == nz, cell boundaries
+        real(prec), intent(IN)    :: H_ice     ! Ice thickness 
+        real(prec), intent(IN)    :: Q_srf     ! Surface value
+        real(prec), intent(IN)    :: Q_base    ! Base value
+        real(prec), intent(IN)    :: sigt(:)   ! nzt, cell centers
+        real(prec), intent(IN)    :: dt 
+
+        ! Local variables
+        integer :: k, nzt   
+        real(prec) :: u_aa, u_acz, Q_lo, Q_hi  
+        real(prec) :: dx, dx2  
+
+        nzt = size(sigt,1)
+
+        ! At center of base layer
+        k    = 1 
+        u_aa = 0.5*(uz(k)+uz(k+1)) ! Get velocity at cell center
+        dx  = (sigt(k+1) - 0.0)/2.0
+
+        advecz(k) = u_aa/(2.0*dx)*(Q(k+1)-Q_base) - u_aa**2 * dt/(2.0*dx**2)*(Q(k+1)+Q_base-2.0*Q(k))
+            
+        ! Loop over internal cell centers
+        do k = 2, nzt-1 
+            
+            u_aa = 0.5*(uz(k)+uz(k+1)) ! Get velocity at cell center
+            dx = (sigt(k+1) - sigt(k-1))/2.0
+
+            advecz(k) = u_aa/(2.0*dx)*(Q(k+1)-Q(k-1)) - u_aa**2 * dt/(2.0*dx**2)*(Q(k+1)+Q(k-1)-2.0*Q(k))
+
+        end do 
+
+        ! At center of surface layer
+        k    = nzt 
+        u_aa = 0.5*(uz(k)+uz(k+1)) ! Get velocity at cell center
+        dx = (1.0 - sigt(k-1))/2.0
+
+        advecz(k) = u_aa/(2.0*dx)*(Q_srf-Q(k-1)) - u_aa**2 * dt/(2.0*dx**2)*(Q_srf+Q(k-1)-2.0*Q(k))
+
+        return 
+
+    end subroutine advection_1D_laxwendroff2
 
         subroutine temperature_matrix_elements(&
          deltat,                &
