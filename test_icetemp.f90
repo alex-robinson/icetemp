@@ -347,7 +347,7 @@ contains
         ice%up%sigma = ice%up%sigma**2.0
         
         ! NEW: calculate MALI-style sigma terms
-        call calc_sigt_terms(ice%up%dsigt_a,ice%up%dsigt_b,ice%up%sigt,ice%up%sigma)
+        call calc_sigt_terms(ice%up%sigt,ice%up%dsigt_a,ice%up%dsigt_b,ice%up%sigma)
 
         ! Initialize remaining vectors to zero 
         ice%up%T_ice   = 0.0 

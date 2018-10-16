@@ -93,7 +93,7 @@ contains
                 ! Ice is too thin, prescribe ice temperature for now
 
                 ! To do 
-
+                T_ice(i,j,:) = T_pmp(i,j,:) 
 
             end if 
 
@@ -296,14 +296,14 @@ contains
 
     end subroutine advection_1D_upwind
 
-    subroutine calc_sigt_terms(dsig_a,dsig_b,sigt,sigma)
+    subroutine calc_sigt_terms(sigt,dsig_a,dsig_b,sigma)
         ! sigma = depth axis (1: base, nz: surface)
         ! Calculate ak, bk terms as defined in Hoffmann et al (2018)
         implicit none 
 
+        real(prec), intent(INOUT) :: sigt(:)      ! nz+1 
         real(prec), intent(INOUT) :: dsig_a(:)    ! nz+1
         real(prec), intent(INOUT) :: dsig_b(:)    ! nz+1
-        real(prec), intent(INOUT) :: sigt(:)      ! nz+1 
         real(prec), intent(IN)    :: sigma(:)     ! nz 
 
         ! Local variables 
