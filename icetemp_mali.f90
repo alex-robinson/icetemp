@@ -12,152 +12,93 @@ module icetemp_mali
     logical,    parameter :: conductive_bedrock = .FALSE. 
     
     private
-    !public :: calc_icetemp_mali_3D_up
-    public :: calc_icetemp_mali_column_up
-     
-    public :: mali_temp_column
+    public :: calc_icetemp_mali_3D_up
+
+    public :: calc_mali_temp_column
     public :: calc_sigt_terms
 
 
 
 contains 
 
-!     subroutine calc_icetemp_mali_3D_up(T_ice,T_rock,T_pmp,cp,ct,ux,uy,uz,Q_strn,Q_b, &
-!                                             Q_geo,T_srf,H_ice,H_w,smb,bmb,f_grnd,sigma,dt,dx)
-!         ! GRISLI solver for thermodynamics for a given column of ice 
-!         ! Note sigma=height, k=1 base, k=nz surface 
-!         ! Note T_ice, T_pmp in [degC], not [K]
-
-!         implicit none 
-
-!         real(prec), intent(OUT) :: T_ice(:,:,:)     ! [degC] Ice column temperature
-!         real(prec), intent(OUT) :: T_rock(:,:,:)    ! [degC] Bedrock column temperature
-!         real(prec), intent(IN)  :: T_pmp(:,:,:)     ! [degC] Pressure melting point temp.
-!         real(prec), intent(IN)  :: cp(:,:,:)        ! [J kg-1 K-1] Specific heat capacity
-!         real(prec), intent(IN)  :: ct(:,:,:)        ! [J a-1 m-1 K-1] Heat conductivity 
-!         real(prec), intent(IN)  :: ux(:,:,:)        ! [m a-1] Horizontal x-velocity 
-!         real(prec), intent(IN)  :: uy(:,:,:)        ! [m a-1] Horizontal y-velocity 
-!         real(prec), intent(IN)  :: uz(:,:,:)        ! [m a-1] Vertical velocity 
-!         real(prec), intent(IN)  :: Q_strn(:,:,:)    ! [K a-1] Internal strain heat production in ice
-!         real(prec), intent(IN)  :: Q_b(:,:)         ! [J a-1 m-2] Basal frictional heat production 
-!         real(prec), intent(IN)  :: Q_geo(:,:)       ! [mW m-2] Geothermal heat flux 
-!         real(prec), intent(IN)  :: T_srf(:,:)       ! [degC] Surface temperature 
-!         real(prec), intent(IN)  :: H_ice(:,:)       ! [m] Ice thickness 
-!         real(prec), intent(IN)  :: H_w(:,:)         ! [m] Basal water layer thickness 
-!         real(prec), intent(IN)  :: smb(:,:)         ! [m a-1] Surface mass balance (melting is negative)
-!         real(prec), intent(IN)  :: bmb(:,:)         ! [m a-1] Basal mass balance (melting is negative)
-!         real(prec), intent(IN)  :: f_grnd(:,:)      ! [--] Floating point or grounded?
-!         real(prec), intent(IN)  :: sigma(:)         ! [--] Vertical sigma coordinates (sigma==height)
-!         real(prec), intent(IN)  :: dt               ! [a] Time step 
-!         real(prec), intent(IN)  :: dx               ! [a] Horizontal grid step 
-
-!         ! Local variable
-!         integer :: i, j, k, nx, ny, nz  
-!         real(prec), allocatable  :: advecxy(:)   ! [K a-1 m-2] Horizontal heat advection 
-!         logical :: is_float 
-!         real(prec) :: H_w_dot 
-
-!         nx = size(T_ice,1)
-!         ny = size(T_ice,2)
-!         nz = size(T_ice,3)
-
-!         allocate(advecxy(nz))
-!         advecxy = 0.0 
-
-!         do j = 3, ny-2
-!         do i = 3, nx-2 
-
-!             ! Calculate the contribution of horizontal advection to column solution
-!             call calc_advec_horizontal_column(advecxy,T_ice,ux,uy,dx,i,j)
-! !             call calc_advec_horizontal_column_sico1(advecxy,T_ice,ux,uy,dx,i,j)
-
-! !             if (H_ice(16,16) .gt. 2800.0 .and. i .eq. 24 .and. j .eq. 16) then
-! !                 do k = 1, nz  
-! !                     write(*,*) advecxy(k), Q_strn(i,j,k)
-! !                 end do 
-! !                 stop 
-! !             end if 
-            
-!             is_float = (f_grnd(i,j) .eq. 0.0)
-             
-!             ! Call thermodynamic solver for the column (solver expects degrees Celcius)
-
-!             T_ice(i,j,:)  = T_ice(i,j,:)  - T0 
-!             T_rock(i,j,:) = T_rock(i,j,:) - T0
-
-!             call calc_icetemp_mali_column_up(T_ice(i,j,:),T_rock(i,j,:),T_pmp(i,j,:)-T0,cp(i,j,:),ct(i,j,:), &
-!                                             uz(i,j,:),Q_strn(i,j,:),advecxy,Q_b(i,j),Q_geo(i,j),T_srf(i,j)-T0, &
-!                                             H_ice(i,j),H_w(i,j),bmb(i,j),is_float,sigma,dt)
-            
-!             T_ice(i,j,:)  = T_ice(i,j,:)  + T0 
-!             T_rock(i,j,:) = T_rock(i,j,:) + T0 
-            
-!         end do 
-!         end do 
-
-!         return 
-
-!     end subroutine calc_icetemp_mali_3D_up
-
-    subroutine calc_icetemp_mali_column_up(T_ice,bmb,is_float, H_ice, T_srf, advecxy, ux, uy, uz, dzsdx, dzsdy, dzsrfdt, &
-                                      dHicedx, dHicedy, dHicedt, cp, kt, Q_strn, Q_b, T_pmp, mb_net, Q_geo, sigma, &
-                                      sigt, dsigt_a, dsigt_b, dx, dt)
-        ! Calculate input variables to column temperature solver,
-        ! and reverse index order (1:base,nz:surface) => (1:surface,nz:base)
+    subroutine calc_icetemp_mali_3D_up(T_ice,T_pmp,cp,ct,ux,uy,uz,Q_strn,Q_b, &
+                                            Q_geo,T_srf,H_ice,H_w,smb,bmb,f_grnd,sigma,sigt,dsigt_a,dsigt_b,dt,dx)
+        ! Solver for thermodynamics of ice 
+        ! Note sigma=height, k=1 base, k=nz surface 
+        ! Note T_ice, T_pmp in [degC], not [K]
 
         implicit none 
 
-        real(prec), intent(INOUT) :: T_ice(:)                           ! The ice temperature [K]
-        real(prec), intent(OUT)   :: bmb                               ! The basal mass balance (negative melt) at the bottom at time time + dt if T_pmp is reached [J m^-2 y^-1]
-        logical,    intent(IN)  :: is_float                            ! Grounded fraction 
-        real(prec), intent(IN)  :: H_ice                             ! The ice thickness [m]
-        real(prec), intent(IN)  :: T_srf                             ! The ice surface temperature at time step time + dt [K]
-        real(prec), intent(IN)  :: advecxy(:)                         ! The 3D velocity field in the x-direction [m y^-1]
-        real(prec), intent(IN)  :: ux(:)                              ! The 3D velocity field in the x-direction [m y^-1]
-        real(prec), intent(IN)  :: uy(:)                              ! The 3D velocity field in the y-direction [m y^-1]
-        real(prec), intent(IN)  :: uz(:)                              ! The 3D velocity field in the zeta-direction [m y^-1]
-        real(prec), intent(IN)  :: dzsdx                             ! The surface gradient in the x-direction [m m^-1]
-        real(prec), intent(IN)  :: dzsdy                             ! The surface gradient in the y-direction [m m^-1]
-        real(prec), intent(IN)  :: dzsrfdt                           ! The surface gradient in time [m a-1]
-        real(prec), intent(IN)  :: dHicedx                           ! The ice thickness gradient in the x-direction [m m^-1]
-        real(prec), intent(IN)  :: dHicedy                           ! The ice thickness gradient in the y-direction [m m^-1]
-        real(prec), intent(IN)  :: dHicedt                           ! The ice thickness gradient in time [m a-1]
-        real(prec), intent(IN)  :: cp(:)                              ! The specific heat capacity of ice at each x,y,zeta point [J kg^-1 K^-1]
-        real(prec), intent(IN)  :: kt(:)                              ! The conductivity of ice at each x,y,zeta point [J m^-1 K^-1 y^-1]
-        real(prec), intent(IN)  :: Q_strn(:)                          ! Internal strain heating [K a-1]
-        real(prec), intent(IN)  :: Q_b                               ! The heat flux at the ice bottom [J m^-2 y^-1]
-        real(prec), intent(IN)  :: T_pmp(:)                           ! The pressure melting point temperature for each depth and for all grid points [K]
-        real(prec), intent(IN)  :: mb_net                            ! Net basal and surface mass balance [meter ice equivalent per year]
-        real(prec), intent(IN)  :: Q_geo                             ! Geothermal heat flux [1e-3 J m^-2 s^-1]
-        real(prec), intent(IN)  :: sigma(:)                               ! Vertical height axis (0:1) 
-        real(prec), intent(IN)  :: sigt(:)                               ! Vertical height axis (0:1) 
-        real(prec), intent(IN)  :: dsigt_a(:)                               ! d Vertical height axis (0:1) 
-        real(prec), intent(IN)  :: dsigt_b(:)                               ! d Vertical height axis (0:1) 
+        real(prec), intent(OUT) :: T_ice(:,:,:)     ! [degC] Ice column temperature
+        real(prec), intent(IN)  :: T_pmp(:,:,:)     ! [degC] Pressure melting point temp.
+        real(prec), intent(IN)  :: cp(:,:,:)        ! [J kg-1 K-1] Specific heat capacity
+        real(prec), intent(IN)  :: ct(:,:,:)        ! [J a-1 m-1 K-1] Heat conductivity 
+        real(prec), intent(IN)  :: ux(:,:,:)        ! [m a-1] Horizontal x-velocity 
+        real(prec), intent(IN)  :: uy(:,:,:)        ! [m a-1] Horizontal y-velocity 
+        real(prec), intent(IN)  :: uz(:,:,:)        ! [m a-1] Vertical velocity 
+        real(prec), intent(IN)  :: Q_strn(:,:,:)    ! [K a-1] Internal strain heat production in ice
+        real(prec), intent(IN)  :: Q_b(:,:)         ! [J a-1 m-2] Basal frictional heat production 
+        real(prec), intent(IN)  :: Q_geo(:,:)       ! [mW m-2] Geothermal heat flux 
+        real(prec), intent(IN)  :: T_srf(:,:)       ! [degC] Surface temperature 
+        real(prec), intent(IN)  :: H_ice(:,:)       ! [m] Ice thickness 
+        real(prec), intent(IN)  :: H_w(:,:)         ! [m] Basal water layer thickness 
+        real(prec), intent(IN)  :: smb(:,:)         ! [m a-1] Surface mass balance (melting is negative)
+        real(prec), intent(IN)  :: bmb(:,:)         ! [m a-1] Basal mass balance (melting is negative)
+        real(prec), intent(IN)  :: f_grnd(:,:)      ! [--] Floating point or grounded?
+        real(prec), intent(IN)  :: sigma(:)         ! [--] Vertical sigma coordinates (sigma==height), dynamics
+        real(prec), intent(IN)  :: sigt(:)          ! [--] Vertical sigma coordinates (sigma==height), thermodynamics
+        real(prec), intent(IN)  :: dsigt_a(:)       ! d Vertical height axis (0:1) 
+        real(prec), intent(IN)  :: dsigt_b(:)       ! d Vertical height axis (0:1) 
+        real(prec), intent(IN)  :: dt               ! [a] Time step 
+        real(prec), intent(IN)  :: dx               ! [a] Horizontal grid step 
         
-        real(prec), intent(IN)  :: dx 
-        real(prec), intent(IN)  :: dt 
-
         ! Local variables
-        integer    :: i, j, k, nx, ny, nz, nzt   
-        real(prec) :: bottom_melt 
-        real(prec) :: Q_geo_now 
-        real(prec) :: ghf_conv, ghf_now 
+        integer :: i, j, k, nx, ny, nz, nzt   
+        real(prec), allocatable  :: advecxy(:)   ! [K a-1 m-2] Horizontal heat advection 
+        logical :: is_float 
+        real(prec) :: H_w_dot 
+        real(prec) :: ghf_conv, Q_geo_now 
 
         ghf_conv = 1e-3*sec_year   ! [mW m-2] => [J m-2 a-1]
 
-        nz  = size(sigma,1)
-        nzt = size(sigt,1) 
+        nx  = size(T_ice,1)
+        ny  = size(T_ice,2)
+        nzt = size(T_ice,3)
+        nz  = size(uz,3)
 
-        ! Get geothermal heat flux in proper units 
-        Q_geo_now = Q_geo*ghf_conv 
+        allocate(advecxy(nzt))
+        advecxy = 0.0 
 
+        do j = 3, ny-2
+        do i = 3, nx-2 
+        
+            ! Get geothermal heat flux in proper units 
+            Q_geo_now = Q_geo(i,j)*ghf_conv 
+
+            ! Calculate the contribution of horizontal advection to column solution
+!             call calc_advec_horizontal_column(advecxy,T_ice,ux,uy,dx,i,j)
+! !             call calc_advec_horizontal_column_sico1(advecxy,T_ice,ux,uy,dx,i,j)
+            
+            is_float = (f_grnd(i,j) .eq. 0.0)
+             
+            ! Call thermodynamic solver for the column (solver expects degrees Celcius)
+
+            T_ice(i,j,:)  = T_ice(i,j,:)  - T0 
+
+!             call calc_icetemp_mali_column_up(T_ice(i,j,:),T_pmp(i,j,:)-T0,cp(i,j,:),ct(i,j,:), &
+!                                             uz(i,j,:),Q_strn(i,j,:),advecxy,Q_b(i,j),Q_geo(i,j),T_srf(i,j)-T0, &
+!                                             H_ice(i,j),H_w(i,j),bmb(i,j),is_float,sigma,dt)
+            
+            T_ice(i,j,:)  = T_ice(i,j,:)  + T0 
+            
+        end do 
+        end do 
 
         return 
 
-    end subroutine calc_icetemp_mali_column_up
+    end subroutine calc_icetemp_mali_3D_up
 
-
-    subroutine mali_temp_column(T_ice,T_base,T_pmp,cp,ct,uz,Q_strn,advecxy,Q_b, &
+    subroutine calc_mali_temp_column(T_ice,T_base,T_pmp,cp,ct,uz,Q_strn,advecxy,Q_b, &
                                             Q_geo,T_srf,H_ice,H_w,bmb,is_float, &
                                             sigma,sigt,dsigt_a,dsigt_b,dt)
         ! Thermodynamics solver for a given column of ice 
@@ -305,7 +246,7 @@ contains
         
         return 
 
-    end subroutine mali_temp_column
+    end subroutine calc_mali_temp_column
 
     subroutine advection_1D_upwind(advecz,Q,uz,H_ice,sigt)
         ! Calculate vertical advection term advecz, which enters
