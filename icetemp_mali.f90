@@ -232,12 +232,9 @@ contains
 !             rhs(k)  = T_ice(ki) + dt*Q_strn_aa(ki) !- dt*advecz_aa 
             
             fac     = dt * ct_aa(ki) / (rho_ice*cp_aa(ki)) / H_ice**2
-!             subd(k) = -fac*dsigt_a(ki) - 0.5*(uz(k-1)+uz(k))*dt / (2.0*H_ice*(sigma(k)-sigma(k-1)))
-!             supd(k) = -fac*dsigt_b(ki) + 0.5*(uz(k-1)+uz(k))*dt / (2.0*H_ice*(sigma(k)-sigma(k-1)))
             subd(k) = -fac*dsigt_a(ki) - 0.5*(uz(k-1)+uz(k))*dt / (2.0*H_ice*(sigma(k)-sigma(k-1)))
             supd(k) = -fac*dsigt_b(ki) + 0.5*(uz(k-1)+uz(k))*dt / (2.0*H_ice*(sigma(k)-sigma(k-1)))
             diag(k) = 1.0_prec - (-fac*dsigt_a(ki)) - (-fac*dsigt_b(ki))
-!             diag(k) = 1.0_prec - (subd(k) + supd(k))
             rhs(k)  = T_ice(ki) + dt*Q_strn_aa(ki) !- dt*advecz_aa 
 
         end do 
