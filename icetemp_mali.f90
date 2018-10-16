@@ -82,8 +82,7 @@ contains
                 ! Thick ice exists, call thermodynamic solver for the column
 
                 ! Pre-calculate the contribution of horizontal advection to column solution
-!                 call calc_advec_horizontal_column(advecxy,T_ice,ux,uy,dx,i,j)
-! !                 call calc_advec_horizontal_column_sico1(advecxy,T_ice,ux,uy,dx,i,j)
+                call calc_advec_horizontal_column(advecxy,T_ice,ux,uy,dx,i,j)
                 
                 call calc_mali_temp_column(T_ice(i,j,:),T_pmp(i,j,:),cp(i,j,:),ct(i,j,:),uz(i,j,:), &
                                                 Q_strn(i,j,:),advecxy,Q_b(i,j),Q_geo(i,j),T_srf(i,j), &
@@ -236,7 +235,7 @@ contains
             subd(k) = -fac*dsigt_a(k) - 0.5*(uz(k-1)+uz(k))*dt / (2.0*H_ice*(sigma(k)-sigma(k-1)))
             supd(k) = -fac*dsigt_b(k) + 0.5*(uz(k-1)+uz(k))*dt / (2.0*H_ice*(sigma(k)-sigma(k-1)))
             diag(k) = 1.0_prec - (-fac*dsigt_a(k)) - (-fac*dsigt_b(k))
-            rhs(k)  = T_ice(k) + dt*Q_strn(k) 
+            rhs(k)  = T_ice(k) + dt*Q_strn(k) - dt*advecxy(k) 
 
         end do 
 

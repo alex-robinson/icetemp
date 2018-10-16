@@ -82,10 +82,10 @@ contains
 
         implicit none
 
-        real(prec), intent(OUT) :: advecxy(:) 
-        real(prec), intent(IN)  :: var_ice(:,:,:)   ! Enth, T, age, etc...
-        real(prec), intent(IN)  :: ux(:,:,:) 
-        real(prec), intent(IN)  :: uy(:,:,:)
+        real(prec), intent(OUT) :: advecxy(:)       ! nzt = nz+1 
+        real(prec), intent(IN)  :: var_ice(:,:,:)   ! nx,ny,nzt  Enth, T, age, etc...
+        real(prec), intent(IN)  :: ux(:,:,:)        ! nx,ny,nz
+        real(prec), intent(IN)  :: uy(:,:,:)        ! nx,ny,nz
         real(prec), intent(IN)  :: dx  
         integer,    intent(IN)  :: i, j 
 
@@ -103,29 +103,32 @@ contains
         ny = size(var_ice,2)
         nz = size(var_ice,3) 
 
-        ! Loop over each point in the column
-        do k = 1, nz 
+        advecx = 0.0 
+        advecy = 0.0 
 
-            ! Estimate direction of current flow into cell (x and y)
-            ux_aa = 0.5_prec*(ux(i,j,k)+ux(i-1,j,k))
-            uy_aa = 0.5_prec*(uy(i,j,k)+uy(i,j-1,k))
+        ! Loop over each point in the column
+        do k = 2, nz 
+
+            ! Estimate direction of current flow into cell (x and y), centered in vertical layer and grid point
+            ux_aa = 0.25_prec*(ux(i,j,k)+ux(i-1,j,k)+ux(i,j,k-1)+ux(i-1,j,k-1))
+            uy_aa = 0.25_prec*(uy(i,j,k)+uy(i,j-1,k)+uy(i,j,k-1)+uy(i,j-1,k-1))
 
             ! Explicit form (to test different order approximations)
             if (ux_aa .gt. 0.0 .and. i .ge. 3) then  
                 ! Flow to the right 
 
                 ! 1st order
-!                 advecx = dx_inv * ux(i-1,j,k)*(var_ice(i,j,k)-var_ice(i-1,j,k))
+!                 advecx = dx_inv * 0.5*(ux(i-1,j,k)+ux(i-1,j,k-1))*(var_ice(i,j,k)-var_ice(i-1,j,k))
                 ! 2nd order
-                advecx = dx_inv2 * ux(i-1,j,k)*(-(4.0*var_ice(i-1,j,k)-var_ice(i-2,j,k)-3.0*var_ice(i,j,k)))
+                advecx = dx_inv2 * 0.5*(ux(i-1,j,k)+ux(i-1,j,k-1))*(-(4.0*var_ice(i-1,j,k)-var_ice(i-2,j,k)-3.0*var_ice(i,j,k)))
             
             else if (ux_aa .lt. 0.0 .and. i .le. nx-2) then 
                 ! Flow to the left
 
                 ! 1st order 
-!                 advecx = dx_inv * ux(i,j,k)*(var_ice(i+1,j,k)-var_ice(i,j,k))
+!                 advecx = dx_inv * 0.5*(ux(i,j,k)+ux(i,j,k-1))*(var_ice(i+1,j,k)-var_ice(i,j,k))
                 ! 2nd order
-                advecx = dx_inv2 * ux(i,j,k)*((4.0*var_ice(i+1,j,k)-var_ice(i+2,j,k)-3.0*var_ice(i,j,k)))
+                advecx = dx_inv2 * 0.5*(ux(i,j,k)+ux(i,j,k-1))*((4.0*var_ice(i+1,j,k)-var_ice(i+2,j,k)-3.0*var_ice(i,j,k)))
             
             else 
                 ! No flow 
@@ -137,17 +140,17 @@ contains
                 ! Flow to the right 
 
                 ! 1st order
-!                 advecy = dx_inv * uy(i,j-1,k)*(var_ice(i,j,k)-var_ice(i,j-1,k))
+!                 advecy = dx_inv * 0.5*(uy(i,j-1,k)+uy(i,j-1,k-1))*(var_ice(i,j,k)-var_ice(i,j-1,k))
                 ! 2nd order
-                advecy = dx_inv2 * uy(i,j-1,k)*(-(4.0*var_ice(i,j-1,k)-var_ice(i,j-2,k)-3.0*var_ice(i,j,k)))
+                advecy = dx_inv2 * 0.5*(uy(i,j-1,k)+uy(i,j-1,k-1))*(-(4.0*var_ice(i,j-1,k)-var_ice(i,j-2,k)-3.0*var_ice(i,j,k)))
             
             else if (uy_aa .lt. 0.0 .and. j .le. ny-2) then 
                 ! Flow to the left
 
                 ! 1st order 
-!                 advecy = dx_inv * uy(i,j,k)*(var_ice(i,j+1,k)-var_ice(i,j,k))
+!                 advecy = dx_inv * 0.5*(uy(i,j,k)+uy(i,j,k-1))*(var_ice(i,j+1,k)-var_ice(i,j,k))
                 ! 2nd order
-                advecy = dx_inv2 * uy(i,j,k)*((4.0*var_ice(i,j+1,k)-var_ice(i,j+2,k)-3.0*var_ice(i,j,k)))
+                advecy = dx_inv2 * 0.5*(uy(i,j,k)+uy(i,j,k-1))*((4.0*var_ice(i,j+1,k)-var_ice(i,j+2,k)-3.0*var_ice(i,j,k)))
             
             else
                 ! No flow 
