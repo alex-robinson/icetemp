@@ -377,7 +377,7 @@ contains
 
             ! Solving the tridiagonal set of equations (X.25) which contains the implicit scheme in the vertical per horizontal grid point:
 !             Ti_new(:) = tridiagonal_solve(alpha, beta, gamma, delta, 'thermodynamics_module [temperature]')
-            call solve_tridiag(alpha,beta,gamma,delta,Ti_new,nz)
+            call solve_tridiag(alpha,beta,gamma,delta,Ti_new)
 
         END IF ! End IF Hi_min
 

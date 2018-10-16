@@ -2,7 +2,7 @@ module icetemp_mali
     ! Wrapping the MALI icetemp solution for yelmo 
 
     use defs, only : prec, pi, g, sec_year, T0, rho_ice, rho_sw, rho_w 
-    use solver_tridiagonal, only : tridiag 
+    use solver_tridiagonal, only : solve_tridiag 
     use thermodynamics, only : calc_advec_horizontal_column_sico1, calc_advec_horizontal_column, &
                                 calc_T_pmp
 
@@ -21,6 +21,83 @@ module icetemp_mali
 
 
 contains 
+
+!     subroutine calc_icetemp_mali_3D_up(T_ice,T_rock,T_pmp,cp,ct,ux,uy,uz,Q_strn,Q_b, &
+!                                             Q_geo,T_srf,H_ice,H_w,smb,bmb,f_grnd,sigma,dt,dx)
+!         ! GRISLI solver for thermodynamics for a given column of ice 
+!         ! Note sigma=height, k=1 base, k=nz surface 
+!         ! Note T_ice, T_pmp in [degC], not [K]
+
+!         implicit none 
+
+!         real(prec), intent(OUT) :: T_ice(:,:,:)     ! [degC] Ice column temperature
+!         real(prec), intent(OUT) :: T_rock(:,:,:)    ! [degC] Bedrock column temperature
+!         real(prec), intent(IN)  :: T_pmp(:,:,:)     ! [degC] Pressure melting point temp.
+!         real(prec), intent(IN)  :: cp(:,:,:)        ! [J kg-1 K-1] Specific heat capacity
+!         real(prec), intent(IN)  :: ct(:,:,:)        ! [J a-1 m-1 K-1] Heat conductivity 
+!         real(prec), intent(IN)  :: ux(:,:,:)        ! [m a-1] Horizontal x-velocity 
+!         real(prec), intent(IN)  :: uy(:,:,:)        ! [m a-1] Horizontal y-velocity 
+!         real(prec), intent(IN)  :: uz(:,:,:)        ! [m a-1] Vertical velocity 
+!         real(prec), intent(IN)  :: Q_strn(:,:,:)    ! [K a-1] Internal strain heat production in ice
+!         real(prec), intent(IN)  :: Q_b(:,:)         ! [J a-1 m-2] Basal frictional heat production 
+!         real(prec), intent(IN)  :: Q_geo(:,:)       ! [mW m-2] Geothermal heat flux 
+!         real(prec), intent(IN)  :: T_srf(:,:)       ! [degC] Surface temperature 
+!         real(prec), intent(IN)  :: H_ice(:,:)       ! [m] Ice thickness 
+!         real(prec), intent(IN)  :: H_w(:,:)         ! [m] Basal water layer thickness 
+!         real(prec), intent(IN)  :: smb(:,:)         ! [m a-1] Surface mass balance (melting is negative)
+!         real(prec), intent(IN)  :: bmb(:,:)         ! [m a-1] Basal mass balance (melting is negative)
+!         real(prec), intent(IN)  :: f_grnd(:,:)      ! [--] Floating point or grounded?
+!         real(prec), intent(IN)  :: sigma(:)         ! [--] Vertical sigma coordinates (sigma==height)
+!         real(prec), intent(IN)  :: dt               ! [a] Time step 
+!         real(prec), intent(IN)  :: dx               ! [a] Horizontal grid step 
+
+!         ! Local variable
+!         integer :: i, j, k, nx, ny, nz  
+!         real(prec), allocatable  :: advecxy(:)   ! [K a-1 m-2] Horizontal heat advection 
+!         logical :: is_float 
+!         real(prec) :: H_w_dot 
+
+!         nx = size(T_ice,1)
+!         ny = size(T_ice,2)
+!         nz = size(T_ice,3)
+
+!         allocate(advecxy(nz))
+!         advecxy = 0.0 
+
+!         do j = 3, ny-2
+!         do i = 3, nx-2 
+
+!             ! Calculate the contribution of horizontal advection to column solution
+!             call calc_advec_horizontal_column(advecxy,T_ice,ux,uy,dx,i,j)
+! !             call calc_advec_horizontal_column_sico1(advecxy,T_ice,ux,uy,dx,i,j)
+
+! !             if (H_ice(16,16) .gt. 2800.0 .and. i .eq. 24 .and. j .eq. 16) then
+! !                 do k = 1, nz  
+! !                     write(*,*) advecxy(k), Q_strn(i,j,k)
+! !                 end do 
+! !                 stop 
+! !             end if 
+            
+!             is_float = (f_grnd(i,j) .eq. 0.0)
+             
+!             ! Call thermodynamic solver for the column (solver expects degrees Celcius)
+
+!             T_ice(i,j,:)  = T_ice(i,j,:)  - T0 
+!             T_rock(i,j,:) = T_rock(i,j,:) - T0
+
+!             call calc_icetemp_mali_column_up(T_ice(i,j,:),T_rock(i,j,:),T_pmp(i,j,:)-T0,cp(i,j,:),ct(i,j,:), &
+!                                             uz(i,j,:),Q_strn(i,j,:),advecxy,Q_b(i,j),Q_geo(i,j),T_srf(i,j)-T0, &
+!                                             H_ice(i,j),H_w(i,j),bmb(i,j),is_float,sigma,dt)
+            
+!             T_ice(i,j,:)  = T_ice(i,j,:)  + T0 
+!             T_rock(i,j,:) = T_rock(i,j,:) + T0 
+            
+!         end do 
+!         end do 
+
+!         return 
+
+!     end subroutine calc_icetemp_mali_3D_up
 
     subroutine calc_icetemp_mali_column_up(T_ice,bmb,is_float, H_ice, T_srf, advecxy, ux, uy, uz, dzsdx, dzsdy, dzsrfdt, &
                                       dHicedx, dHicedy, dHicedt, cp, kt, Q_strn, Q_b, T_pmp, mb_net, Q_geo, sigma, &
@@ -92,14 +169,14 @@ contains
 
         implicit none 
 
-        real(prec), intent(INOUT) :: T_ice(:)   ! nz-1 [degC] Ice column temperature
+        real(prec), intent(INOUT) :: T_ice(:)   ! nz+1 [degC] Ice column temperature
         real(prec), intent(INOUT) :: T_base     ! [degC] Basal temperature
-        real(prec), intent(IN)  :: T_pmp(:)     ! nz-1 [degC] Pressure melting point temp.
-        real(prec), intent(IN)  :: cp(:)        ! nz   [J kg-1 K-1] Specific heat capacity
-        real(prec), intent(IN)  :: ct(:)        ! nz   [J a-1 m-1 K-1] Heat conductivity 
+        real(prec), intent(IN)  :: T_pmp(:)     ! nz+1 [degC] Pressure melting point temp.
+        real(prec), intent(IN)  :: cp(:)        ! nz+1 [J kg-1 K-1] Specific heat capacity
+        real(prec), intent(IN)  :: ct(:)        ! nz+1 [J a-1 m-1 K-1] Heat conductivity 
         real(prec), intent(IN)  :: uz(:)        ! nz   [m a-1] Vertical velocity 
-        real(prec), intent(IN)  :: Q_strn(:)    ! nz   [K a-1] Internal strain heat production in ice
-        real(prec), intent(IN)  :: advecxy(:)   ! nz   [K a-1] Horizontal heat advection 
+        real(prec), intent(IN)  :: Q_strn(:)    ! nz+1 [K a-1] Internal strain heat production in ice
+        real(prec), intent(IN)  :: advecxy(:)   ! nz+1 [K a-1] Horizontal heat advection 
         real(prec), intent(IN)  :: Q_b          ! [J a-1 m-2] Basal frictional heat production 
         real(prec), intent(IN)  :: Q_geo        ! [mW m-2] Geothermal heat flux 
         real(prec), intent(IN)  :: T_srf        ! [degC] Surface temperature 
@@ -108,72 +185,47 @@ contains
         real(prec), intent(IN)  :: bmb          ! [m a-1] Basal mass balance (melting is negative)
         logical,    intent(IN)  :: is_float     ! [--] Floating point or grounded?
         real(prec), intent(IN)  :: sigma(:)     ! nz   [--] Vertical sigma coordinates (sigma==height)
-        real(prec), intent(IN)  :: sigt(:)      ! nz-1 [--] Vertical height axis (0:1) 
-        real(prec), intent(IN)  :: dsigt_a(:)   ! nz-1 [--] d Vertical height axis (0:1) 
-        real(prec), intent(IN)  :: dsigt_b(:)   ! nz-1 [--] d Vertical height axis (0:1) 
+        real(prec), intent(IN)  :: sigt(:)      ! nz+1 [--] Vertical height axis temperature (0:1) 
+        real(prec), intent(IN)  :: dsigt_a(:)   ! nz+1 [--] d Vertical height axis (0:1) 
+        real(prec), intent(IN)  :: dsigt_b(:)   ! nz+1 [--] d Vertical height axis (0:1) 
         real(prec), intent(IN)  :: dt           ! [a] Time step 
 
         ! Local variables 
-        integer :: k, nz, nzt, nzz, ki  
+        integer :: k, nz, nzt, ki  
         real(prec) :: T_pmp_base
         real(prec) :: Q_geo_now, ghf_conv  
-        real(prec), allocatable :: cp_aa(:) 
-        real(prec), allocatable :: ct_aa(:) 
-        real(prec), allocatable :: advecxy_aa(:) 
-        real(prec), allocatable :: advecz_aa(:) 
-        real(prec), allocatable :: Q_strn_aa(:) 
-        
-        real(prec), allocatable :: subd(:)     ! nzz 
-        real(prec), allocatable :: diag(:)     ! nzz  
-        real(prec), allocatable :: supd(:)     ! nzz 
-        real(prec), allocatable :: rhs(:)      ! nzz 
-        real(prec), allocatable :: solution(:) ! nzz
-        real(prec), allocatable :: factor(:)   ! nzt 
+        !real(prec), allocatable :: advecz_aa(:) ! nzt 
+
+        real(prec), allocatable :: subd(:)     ! nzt 
+        real(prec), allocatable :: diag(:)     ! nzt  
+        real(prec), allocatable :: supd(:)     ! nzt 
+        real(prec), allocatable :: rhs(:)      ! nzt 
+        real(prec), allocatable :: solution(:) ! nzt
         real(prec) :: dsigmaBot, fac 
         
         nz  = size(sigma,1)
-        nzt = size(sigt,1)   ! == nz-1, only layer midpoints where T is defined
-        nzz = nz+1           ! == nz+1, layer midpoints plus upper and lower boundaries
+        nzt = size(sigt,1)   ! == nz+1, base point, layer midpoints where T is defined, and surface point 
 
-        allocate(cp_aa(nzt))
-        allocate(ct_aa(nzt))
-        allocate(advecxy_aa(nzt))
-        allocate(advecz_aa(nzt))
-        allocate(Q_strn_aa(nzt))
-        
-        allocate(subd(nzz))
-        allocate(diag(nzz))
-        allocate(supd(nzz))
-        allocate(rhs(nzz))
-        allocate(solution(nzz))
-        allocate(factor(nzt))
+        allocate(subd(nzt))
+        allocate(diag(nzt))
+        allocate(supd(nzt))
+        allocate(rhs(nzt))
+        allocate(solution(nzt))
 
-        ! Get average values over column for now 
-        cp_aa = sum(cp) / size(cp,1)
-        ct_aa = sum(ct) / size(ct,1)
-        
         ! Get pressure melting point temperature at the base [celcius]
-        T_pmp_base = calc_T_pmp(H_ice,sigma=0.0_prec,T0=0.0_prec)
+        !T_pmp_base = calc_T_pmp(H_ice,sigma=0.0_prec,T0=0.0_prec)
+        T_pmp_base = T_pmp(1) 
 
         ! Get geothermal heat flux in proper units 
         Q_geo_now = Q_geo*1e-3*sec_year   ! [mW m-2] => [J m-2 a-1]
 
-        ! Get advection on layer midpoints (aa nodes)
-        do k = 1, nzt 
-            advecxy_aa(k) = 0.5*(advecxy(k)+advecxy(k+1))
-        end do 
+        ! Step 1: apply vertical advection (for explicit testing)
+        !allocate(advecz_aa(nzt))
+        !advecz_aa = 0.0
+        !call advection_1D_upwind(advecz_aa,T_ice,uz,H_ice,sigt)
+        !T_ice = T_ice - dt*advecz_aa 
 
-        ! Get strain heating on layer midpoints (aa nodes)
-        do k = 1, nzt 
-            Q_strn_aa(k) = 0.5*(Q_strn(k)+Q_strn(k+1))
-        end do 
-
-        ! Step 1: apply vertical advection 
-        advecz_aa = 0.0
-!         call advection_1D_upwind(advecz_aa,T_ice,uz,H_ice,T_srf,T_base,sigt)
-        T_ice = T_ice - dt*advecz_aa 
-
-        ! Step 2: apply vertical diffusion 
+        ! Step 2: apply vertical implicit diffusion-advection 
         
         ! Ice base
         if (is_float) then
@@ -205,13 +257,13 @@ contains
                 ! Note: basalHeatFlux is generally >= 0, since defined as positive up
 
                 ! calculate dsigma for the bottom layer between the basal boundary and the temperature point above
-                dsigmaBot = sigt(1) - 0.0 
+                dsigmaBot = sigt(2) - sigt(1) 
 
                 ! backward Euler flux basal boundary condition
                 subd(1) =  0.0_prec
                 diag(1) =  1.0_prec
                 supd(1) = -1.0_prec
-                rhs(1)  = (Q_b + Q_geo_now) * dsigmaBot*H_ice / ct_aa(1)
+                rhs(1)  = (Q_b + Q_geo_now) * dsigmaBot*H_ice / ct(1)
 
             end if   ! melting or frozen
 
@@ -219,209 +271,122 @@ contains
 
         ! Ice interior, layers 1:nzt  (matrix elements 2:nzt+1)
 
-        do k = 2, nzt+1
-            ki = k-1 
+        do k = 2, nzt-1
 
             ! No advection (diffusion only)
-!             fac     = dt * ct_aa(ki) / (rho_ice*cp_aa(ki)) / H_ice**2
-!             subd(k) = -fac * dsigt_a(ki)
-!             supd(k) = -fac * dsigt_b(ki)
+!             fac     = dt * ct(k) / (rho_ice*cp(k)) / H_ice**2
+!             subd(k) = -fac * dsigt_a(k)
+!             supd(k) = -fac * dsigt_b(k)
 !             diag(k) = 1.0_prec - (subd(k) + supd(k))
-!             rhs(k)  = T_ice(ki) + dt*Q_strn_aa(ki) !- dt*advecz_aa 
+!             rhs(k)  = T_ice(k) + dt*Q_strn(k) 
             
             ! With implicit advection (diffusion + advection)
-            fac     = dt * ct_aa(ki) / (rho_ice*cp_aa(ki)) / H_ice**2
-            subd(k) = -fac*dsigt_a(ki) - 0.5*(uz(k-1)+uz(k))*dt / (2.0*H_ice*(sigma(k)-sigma(k-1)))
-            supd(k) = -fac*dsigt_b(ki) + 0.5*(uz(k-1)+uz(k))*dt / (2.0*H_ice*(sigma(k)-sigma(k-1)))
-            diag(k) = 1.0_prec - (-fac*dsigt_a(ki)) - (-fac*dsigt_b(ki))
-            rhs(k)  = T_ice(ki) + dt*Q_strn_aa(ki) !- dt*advecz_aa 
+            fac     = dt * ct(k) / (rho_ice*cp(k)) / H_ice**2
+            subd(k) = -fac*dsigt_a(k) - 0.5*(uz(k-1)+uz(k))*dt / (2.0*H_ice*(sigma(k)-sigma(k-1)))
+            supd(k) = -fac*dsigt_b(k) + 0.5*(uz(k-1)+uz(k))*dt / (2.0*H_ice*(sigma(k)-sigma(k-1)))
+            diag(k) = 1.0_prec - (-fac*dsigt_a(k)) - (-fac*dsigt_b(k))
+            rhs(k)  = T_ice(k) + dt*Q_strn(k) 
 
         end do 
 
         ! Ice surface 
-        subd(nzt+2) = 0.0_prec
-        diag(nzt+2) = 1.0_prec
-        supd(nzt+2) = 0.0_prec
-        rhs(nzt+2)  = T_srf
+        subd(nzt) = 0.0_prec
+        diag(nzt) = 1.0_prec
+        supd(nzt) = 0.0_prec
+        rhs(nzt)  = T_srf
 
         ! Call solver 
-        call tridiag_solver(subd,diag,supd,solution,rhs)
+        call solve_tridiag(subd,diag,supd,rhs,solution)
 
         ! Copy the solution into the temperature variables
-        !T_srf        = solution(1)
-        T_ice(1:nzt) = solution(2:nzt+1)
-        T_base       = solution(1)
-
+        T_base = solution(1)
+        T_ice  = solution
+        !T_srf = solution(nzt)
+        
         return 
 
     end subroutine mali_temp_column
 
-    subroutine advection_1D_upwind(advecz,Q,uz,H_ice,Q_srf,Q_base,sigt)
+    subroutine advection_1D_upwind(advecz,Q,uz,H_ice,sigt)
         ! Calculate vertical advection term advecz, which enters
         ! advection equation as
         ! Q_new = Q - dt*advecz = Q - dt*u*dQ/dx
 
         implicit none 
 
-        real(prec), intent(OUT)   :: advecz(:) ! nzt, cell centers
-        real(prec), intent(INOUT) :: Q(:)      ! nzt, cell centers
-        real(prec), intent(IN)    :: uz(:)     ! nzt+1 == nz, cell boundaries
+        real(prec), intent(OUT)   :: advecz(:) ! nzt: bottom, cell centers, top 
+        real(prec), intent(INOUT) :: Q(:)      ! nzt: bottom, cell centers, top 
+        real(prec), intent(IN)    :: uz(:)     ! nzt-1 == nz, cell boundaries
         real(prec), intent(IN)    :: H_ice     ! Ice thickness 
-        real(prec), intent(IN)    :: Q_srf     ! Surface value
-        real(prec), intent(IN)    :: Q_base    ! Base value
         real(prec), intent(IN)    :: sigt(:)   ! nzt, cell centers
         
         ! Local variables
         integer :: k, nzt   
-        real(prec) :: u_aa 
-        real(prec) :: dx 
+        real(prec) :: u_aa, dx  
 
         nzt = size(sigt,1)
 
-        ! At center of base layer
-        k    = 1 
-        u_aa = 0.5*(uz(k)+uz(k+1)) ! Get velocity at cell center
-        if (u_aa > 0.0) then 
-            ! Upwind positive
-            dx       = H_ice*(sigt(k+1)-sigt(k))
-            advecz(k) = uz(k+1)*(Q(k+1)-Q(k))/dx   
-        else
-            ! Upwind negative
-            dx       = H_ice*(sigt(k)-0.0)
-            advecz(k) = uz(k)*(Q(k)-Q_base)/dx
-        end if 
+        advecz = 0.0 
 
         ! Loop over internal cell centers and perform upwind advection 
         do k = 2, nzt-1 
-            u_aa = 0.5*(uz(k)+uz(k+1)) ! Get velocity at cell center
-            if (u_aa > 0.0) then 
-                ! Upwind positive
-                dx = H_ice*(sigt(k+1)-sigt(k))
-                advecz(k) = uz(k+1)*(Q(k+1)-Q(k))/dx   
-            else
+            u_aa = 0.5*(uz(k-1)+uz(k)) ! Get velocity at cell center
+            if (u_aa < 0.0) then 
                 ! Upwind negative
+                dx = H_ice*(sigt(k+1)-sigt(k))
+                advecz(k) = uz(k)*(Q(k+1)-Q(k))/dx   
+            else
+                ! Upwind positive
                 dx = H_ice*(sigt(k)-sigt(k-1))
-                advecz(k) = uz(k)*(Q(k)-Q(k-1))/dx
+                advecz(k) = uz(k-1)*(Q(k)-Q(k-1))/dx
             end if 
         end do 
-
-        ! At center of surface layer
-        k    = nzt 
-        u_aa = 0.5*(uz(k)+uz(k+1)) ! Get velocity at cell center
-        if (u_aa > 0.0) then 
-            ! Upwind positive
-            dx   = H_ice*(1.0-sigt(k))
-            advecz(k) = uz(k+1)*(Q_srf-Q(k))/dx   
-        else
-            ! Upwind negative
-            dx       = H_ice*(sigt(k)-sigt(k-1))
-            advecz(k) = uz(k)*(Q(k)-Q(k-1))/dx
-        end if 
 
         return 
 
     end subroutine advection_1D_upwind
 
-    subroutine calc_sigt_terms(dsig_a,dsig_b,sigmamid,sigma)
+    subroutine calc_sigt_terms(dsig_a,dsig_b,sigt,sigma)
         ! sigma = depth axis (1: base, nz: surface)
         ! Calculate ak, bk terms as defined in Hoffmann et al (2018)
         implicit none 
 
-        real(prec), intent(INOUT) :: dsig_a(:)    ! nz-1
-        real(prec), intent(INOUT) :: dsig_b(:)    ! nz-1
-        real(prec), intent(INOUT) :: sigmamid(:)        ! nz-1 
-        real(prec), intent(IN)    :: sigma(:)           ! nz 
+        real(prec), intent(INOUT) :: dsig_a(:)    ! nz+1
+        real(prec), intent(INOUT) :: dsig_b(:)    ! nz+1
+        real(prec), intent(INOUT) :: sigt(:)      ! nz+1 
+        real(prec), intent(IN)    :: sigma(:)     ! nz 
 
         ! Local variables 
-        integer :: k, nz_layers, nz  
+        integer :: k, nz_layers, nz, nzt   
 
-        nz = size(sigma)
-        nz_layers = nz - 1  
+        nz  = size(sigma)
+        nzt = size(sigt)
 
-        ! Get sigmamid (midpoints of sigma layers - between sigma values)
-        do k = 1, nz_layers
-            sigmamid(k) = 0.5 * (sigma(k+1) + sigma(k))
+        ! Get sigt (midpoints of sigma layers - between sigma values)
+        ! Note: that first layer and last layer are not equally spaced with the remaining vector
+        sigt(1) = 0.0 
+        do k = 1, nzt-2
+            sigt(k+1) = 0.5 * (sigma(k+1) + sigma(k))
         end do 
+        sigt(nzt) = 1.0 
 
+        ! Initialize dsig_a/dsig_b to zero, first and last indices will not be used (end points)
+        dsig_a = 0.0 
+        dsig_b = 0.0 
 
-        k = 1 
-        dsig_a(k) = 1.0 / ((sigma(k+1)-sigma(k))*(sigmamid(k)-sigma(k)))
-
-        do k = 2, nz_layers
-            dsig_a(k) = 1.0/ ( (sigma(k+1) - sigma(k)) * &
-                                (sigmamid(k) - sigmamid(k-1)) )
+        do k = 2, nzt-2 
+            dsig_a(k) = 1.0/ ( (sigma(k) - sigma(k-1)) * &
+                                (sigt(k) - sigt(k-1)) )
         enddo
 
-        do k = 1, nz_layers-1
-            dsig_b(k) = 1.0/ ( (sigma(k+1) - sigma(k)) * &
-                                (sigmamid(k+1) - sigmamid(k)) )
+        do k = 2, nzt-2
+            dsig_b(k) = 1.0/ ( (sigma(k) - sigma(k-1)) * &
+                                (sigt(k+1) - sigt(k)) )
         end do
-
-        k = nz_layers
-        dsig_b(k) = 1.0/( (sigma(k+1) - sigma(k)) * &
-                            (sigma(k+1) - sigmamid(k)) )
 
         return 
 
     end subroutine calc_sigt_terms
-
-    subroutine tridiag_solver(a,b,c,x,y)
-        !|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
-        !
-        !  !  routine tridiag_solver
-        !
-        !> \brief MPAS solve tridiagonal matrix
-        !> \author William Lipscomb
-        !> \date   October 2015
-        !> \details
-        !>  This routine solves a tridiagonal matrix equation, given the matrix
-        !>  coefficients and right-hand side.
-        !-----------------------------------------------------------------------
-
-        !-----------------------------------------------------------------
-        ! input variables
-        !-----------------------------------------------------------------
-
-        real(kind=prec), dimension(:), intent(in)  :: a !< Input: Lower diagonal; a(1) is ignored
-        real(kind=prec), dimension(:), intent(in)  :: b !< Input: Main diagonal
-        real(kind=prec), dimension(:), intent(in)  :: c !< Input: Upper diagonal; c(n) is ignored
-        real(kind=prec), dimension(:), intent(in)  :: y !< Input: Right-hand side
-
-        !-----------------------------------------------------------------
-        ! output variables
-        !-----------------------------------------------------------------
-
-        real(kind=prec), dimension(:), intent(out) :: x !< Output: Unknown vector
-
-        !-----------------------------------------------------------------
-        ! local variables
-        !-----------------------------------------------------------------
-
-        real(kind=prec), dimension(size(a)) :: aa
-        real(kind=prec), dimension(size(a)) :: bb
-
-        integer :: n, i
-
-        n = size(a)
-
-        aa(1) = c(1) / b(1)
-        bb(1) = y(1) / b(1)
-
-        do i = 2, n
-            aa(i) = c(i) / (b(i)-a(i)*aa(i-1))
-            bb(i) = (y(i)-a(i)*bb(i-1)) / (b(i)-a(i)*aa(i-1))
-        end do
-
-        x(n) = bb(n)
-
-        do i = n-1, 1, -1
-            x(i) = bb(i) - aa(i)*x(i+1)
-        end do
-
-        return 
-
-    end subroutine tridiag_solver
-
 
 end module icetemp_mali
 
