@@ -226,6 +226,8 @@ contains
         ice%is_float = .FALSE.     ! Grounded point 
         ice%ibase    = 1           ! Frozen 
 
+        ice%H_ice    = 1000.0      ! [m] Summit thickness
+        
         ! EISMINT1
         ice%up%cp      = 2009.0    ! [J kg-1 K-1]
         ice%up%kt      = 6.67e7    ! [J a-1 m-1 K-1]
@@ -274,6 +276,9 @@ contains
         do k = 2, nz-1 
             ice%up%uz(k) = ice%up%uz(1)+(ice%up%sigma(k))*(ice%up%uz(nz)-ice%up%uz(1))
         end do 
+
+        ! Make velocity vertical to see what happens...
+        ice%up%uz = -ice%up%uz 
 
         return 
 

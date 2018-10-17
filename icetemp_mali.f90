@@ -78,7 +78,7 @@ contains
             ! Determine if point is floating 
             is_float = (f_grnd(i,j) .eq. 0.0)
             
-            if (H_ice(i,j) .gt. 2.0) then 
+            if (H_ice(i,j) .gt. 10.0) then 
                 ! Thick ice exists, call thermodynamic solver for the column
 
                 ! Pre-calculate the contribution of horizontal advection to column solution
@@ -89,11 +89,13 @@ contains
                                                 H_ice(i,j),H_w(i,j),bmb(i,j),is_float, &
                                                 sigma,sigt,dsigt_a,dsigt_b,dt)
 
-            else 
-                ! Ice is too thin, prescribe ice temperature for now
+            else
+                ! Ice is too thin, prescribe linear temperature profile
+                ! between temperate ice at base and surface temperature 
 
-                ! To do 
-                T_ice(i,j,:) = T_pmp(i,j,:) 
+                do k = 1, nzt 
+                    T_ice(i,j,k) = T_pmp(i,j,1)  + sigt(k)*(T_srf(i,j)-T_pmp(i,j,1))
+                end do 
 
             end if 
 
@@ -115,6 +117,8 @@ contains
         ! temperature is defined for cell centers, plus a value at the surface and the base
         ! so nzt = nz + 1 
 
+        ! For notes on implicit form of advection terms, see eg http://farside.ph.utexas.edu/teaching/329/lectures/node90.html
+        
         implicit none 
 
         real(prec), intent(INOUT) :: T_ice(:)     ! nz+1 [degC] Ice column temperature
@@ -296,14 +300,14 @@ contains
 
     end subroutine advection_1D_upwind
 
-    subroutine calc_sigt_terms(sigt,dsig_a,dsig_b,sigma)
+    subroutine calc_sigt_terms(sigt,dsigt_a,dsigt_b,sigma)
         ! sigma = depth axis (1: base, nz: surface)
         ! Calculate ak, bk terms as defined in Hoffmann et al (2018)
         implicit none 
 
         real(prec), intent(INOUT) :: sigt(:)      ! nz+1 
-        real(prec), intent(INOUT) :: dsig_a(:)    ! nz+1
-        real(prec), intent(INOUT) :: dsig_b(:)    ! nz+1
+        real(prec), intent(INOUT) :: dsigt_a(:)    ! nz+1
+        real(prec), intent(INOUT) :: dsigt_b(:)    ! nz+1
         real(prec), intent(IN)    :: sigma(:)     ! nz 
 
         ! Local variables 
@@ -320,17 +324,17 @@ contains
         end do 
         sigt(nzt) = 1.0 
 
-        ! Initialize dsig_a/dsig_b to zero, first and last indices will not be used (end points)
-        dsig_a = 0.0 
-        dsig_b = 0.0 
+        ! Initialize dsigt_a/dsigt_b to zero, first and last indices will not be used (end points)
+        dsigt_a = 0.0 
+        dsigt_b = 0.0 
 
-        do k = 2, nzt-2 
-            dsig_a(k) = 1.0/ ( (sigma(k) - sigma(k-1)) * &
+        do k = 2, nzt-1 
+            dsigt_a(k) = 1.0/ ( (sigma(k) - sigma(k-1)) * &
                                 (sigt(k) - sigt(k-1)) )
         enddo
 
-        do k = 2, nzt-2
-            dsig_b(k) = 1.0/ ( (sigma(k) - sigma(k-1)) * &
+        do k = 2, nzt-1
+            dsigt_b(k) = 1.0/ ( (sigma(k) - sigma(k-1)) * &
                                 (sigt(k+1) - sigt(k)) )
         end do
 
