@@ -9,63 +9,7 @@ module solver_tridiagonal
    
 contains
 
-!***************************************************************
-!
-! tridiag : routine de resolution d'un systeme tri-diagonal
-!  M * U = R   ou M est tridiag.  (ssdiag :A, diag:B, surdiag : C)
-!  U est la solution recherchee
-!
-!*****************************************************************
-subroutine tridiag(A,B,C,R,U,n,ifail)
-
-IMPLICIT NONE
-
-integer, intent(in) :: n
-real(prec),dimension(n), intent(in)    :: a       ! sous-diagonale l'indice 1 ne sert pas
-real(prec),dimension(n), intent(inout) :: b       ! diagonale
-real(prec),dimension(n), intent(in)    :: c       ! sur-diagonale, l'indice n ne sert pas
-real(prec),dimension(n), intent(in)    :: r       ! vecteur membre de droite
-real(prec),dimension(n), intent(out)   :: u       ! solution
-integer,                 intent(out)   :: ifail ! permet de detecter une erreur
-
-! Local variables 
-real(prec),dimension(n) :: gam       ! tableau de travail.
-real(prec) :: BET
-integer :: JJ
-
-ifail=0 
-
-if (abs(B(1)).lt.1.e-20) then 
-   B(1)=1.0 
-   ifail=1 
-endif
-
-BET=1.0/B(1) 
-U(1)=R(1)*BET
-
-do jj=2,n
-   GAM(jj)=C(jj-1)*BET
-   BET=1./(B(jj)-A(jj)*GAM(jj))
-
-   if (abs(BET)>1.0e20) then
-      BET=1.0 
-      ifail=1 
-   endif
- 
-  U(jj) = (R(JJ)-A(JJ)*U(JJ-1))*BET  
-end do
-
-do JJ=N-1,1,-1
-   U(JJ)=U(JJ)-GAM(JJ+1)*U(JJ+1) 
-end do
-
-if (ifail.eq.1) then 
-   write(*,*) "tridiag:: Error: An element of B is null."
-endif
-
-end subroutine tridiag 
-
-    subroutine solve_tridiag(a,b,c,d,x,n)
+    subroutine solve_tridiag(a,b,c,d,x)
         ! Solve a tridiagonal system of equations
         !   a - sub-diagonal (means it is the diagonal below the main diagonal)
         !   b - the main diagonal
@@ -81,12 +25,15 @@ end subroutine tridiag
 
         implicit none
         
-        integer,intent(in) :: n
-        real(prec),dimension(n),intent(in) :: a,b,c,d
-        real(prec),dimension(n),intent(out) :: x
-        real(prec),dimension(n) :: cp,dp
+        real(prec), intent(IN)  :: a(:),b(:),c(:),d(:)
+        real(prec), intent(OUT) :: x(:)
+
+        ! Local variables 
+        real(prec) :: cp(size(x)), dp(size(x))
         real(prec) :: m
-        integer i
+        integer    :: i, n 
+
+        n = size(x) 
 
         ! Initialize c-prime and d-prime
         cp(1) = c(1)/b(1)
@@ -110,6 +57,120 @@ end subroutine tridiag
         return 
 
     end subroutine solve_tridiag
+
+    subroutine tridiag_solver(a,b,c,x,y)
+        !|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+        !
+        !  !  routine tridiag_solver
+        !
+        !> \brief MPAS solve tridiagonal matrix
+        !> \author William Lipscomb
+        !> \date   October 2015
+        !> \details
+        !>  This routine solves a tridiagonal matrix equation, given the matrix
+        !>  coefficients and right-hand side.
+        !-----------------------------------------------------------------------
+        ! ajr: copied from MALI for testing 
+        !
+        !-----------------------------------------------------------------
+        ! input variables
+        !-----------------------------------------------------------------
+
+        real(kind=prec), dimension(:), intent(in)  :: a !< Input: Lower diagonal; a(1) is ignored
+        real(kind=prec), dimension(:), intent(in)  :: b !< Input: Main diagonal
+        real(kind=prec), dimension(:), intent(in)  :: c !< Input: Upper diagonal; c(n) is ignored
+        real(kind=prec), dimension(:), intent(in)  :: y !< Input: Right-hand side
+
+        !-----------------------------------------------------------------
+        ! output variables
+        !-----------------------------------------------------------------
+
+        real(kind=prec), dimension(:), intent(out) :: x !< Output: Unknown vector
+
+        !-----------------------------------------------------------------
+        ! local variables
+        !-----------------------------------------------------------------
+
+        real(kind=prec), dimension(size(a)) :: aa
+        real(kind=prec), dimension(size(a)) :: bb
+
+        integer :: n, i
+
+        n = size(a)
+
+        aa(1) = c(1) / b(1)
+        bb(1) = y(1) / b(1)
+
+        do i = 2, n
+            aa(i) = c(i) / (b(i)-a(i)*aa(i-1))
+            bb(i) = (y(i)-a(i)*bb(i-1)) / (b(i)-a(i)*aa(i-1))
+        end do
+
+        x(n) = bb(n)
+
+        do i = n-1, 1, -1
+            x(i) = bb(i) - aa(i)*x(i+1)
+        end do
+
+        return 
+
+    end subroutine tridiag_solver
+
+    !***************************************************************
+    !
+    ! tridiag : routine de resolution d'un systeme tri-diagonal
+    !  M * U = R   ou M est tridiag.  (ssdiag :A, diag:B, surdiag : C)
+    !  U est la solution recherchee
+    !  ajr: copied from GRISLI for testing
+    !*****************************************************************
+    subroutine tridiag(A,B,C,R,U,n,ifail)
+
+    IMPLICIT NONE
+
+    integer, intent(in) :: n
+    real(prec),dimension(n), intent(in)    :: a       ! sous-diagonale l'indice 1 ne sert pas
+    real(prec),dimension(n), intent(inout) :: b       ! diagonale
+    real(prec),dimension(n), intent(in)    :: c       ! sur-diagonale, l'indice n ne sert pas
+    real(prec),dimension(n), intent(in)    :: r       ! vecteur membre de droite
+    real(prec),dimension(n), intent(out)   :: u       ! solution
+    integer,                 intent(out)   :: ifail ! permet de detecter une erreur
+
+    ! Local variables 
+    real(prec),dimension(n) :: gam       ! tableau de travail.
+    real(prec) :: BET
+    integer :: JJ
+
+    ifail=0 
+
+    if (abs(B(1)).lt.1.e-20) then 
+       B(1)=1.0 
+       ifail=1 
+    endif
+
+    BET=1.0/B(1) 
+    U(1)=R(1)*BET
+
+    do jj=2,n
+       GAM(jj)=C(jj-1)*BET
+       BET=1./(B(jj)-A(jj)*GAM(jj))
+
+       if (abs(BET)>1.0e20) then
+          BET=1.0 
+          ifail=1 
+       endif
+     
+      U(jj) = (R(JJ)-A(JJ)*U(JJ-1))*BET  
+    end do
+
+    do JJ=N-1,1,-1
+       U(JJ)=U(JJ)-GAM(JJ+1)*U(JJ+1) 
+    end do
+
+    if (ifail.eq.1) then 
+       write(*,*) "tridiag:: Error: An element of B is null."
+    endif
+
+    end subroutine tridiag 
 
 !   FUNCTION tridiagonal_solve(low_diagonal, central_diagonal, upper_diagonal, rhs, string_error_message) RESULT(solution)
 !     ! Lapack tridiagonal solver (in double precision):

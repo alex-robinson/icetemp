@@ -5,7 +5,9 @@ program test_icetemp
     use defs
     use thermodynamics 
     use icetemp_grisli 
-    
+    use icetemp_imau 
+    use icetemp_mali 
+
     implicit none 
 
     type icesheet_vectors
@@ -18,6 +20,17 @@ program test_icetemp
         real(prec), allocatable :: uz(:)      ! [] Vertical velocity 
         real(prec), allocatable :: advecxy(:) ! [] Horizontal heat advection magnitude
         real(prec), allocatable :: Q_strn(:)  ! [] Strain heating 
+        
+        ! new: MALI style ! nzt = nz+1 
+        real(prec), allocatable :: T_ice_aa(:) ! nz+1 [degC] Ice temperature 
+        real(prec), allocatable :: T_pmp_aa(:) ! nz+1 [degC] Ice temperature
+        real(prec), allocatable :: cp_aa(:)    ! nz+1 [] Ice heat capacity 
+        real(prec), allocatable :: kt_aa(:)    ! nz+1 [] Ice conductivity  
+        real(prec), allocatable :: advecxy_aa(:) ! [] Horizontal heat advection magnitude
+        real(prec), allocatable :: Q_strn_aa(:)  ! [] Strain heating 
+        real(prec), allocatable :: sigt(:)     ! nz+1 [-] sigma coordinates for internal ice layer midpoints
+        real(prec), allocatable :: dsigt_a(:)  ! nz+1 [-] sigma coordinates for internal ice layer midpoints
+        real(prec), allocatable :: dsigt_b(:)  ! nz+1 [-] sigma coordinates for internal ice layer midpoints
         
     end type 
 
@@ -32,6 +45,9 @@ program test_icetemp
         logical    :: is_float  ! [-] Floating flag 
         integer    :: ibase     ! [-] Basal state (1: frozen, 2: temperate)       
         
+        ! New 
+        real(prec) :: T_base    ! [degC] Ice basal temperature 
+
         type(icesheet_vectors) :: up     ! For height coordinate systems with k=1 base and k=nz surface
         type(icesheet_vectors) :: dwn    ! For depth coordinate systems with k=1 surface and k=nz base 
         
@@ -47,21 +63,29 @@ program test_icetemp
     integer            :: n, ntot 
     character(len=512) :: file1D 
     real(prec)         :: dt_out 
-    integer            :: nz, nzr 
+    integer            :: nz, nzr, nzt  
+    real(prec)         :: dx 
+
+    character(len=512) :: solver 
+    logical            :: is_celcius 
 
     ! ===============================================================
     ! User options 
 
-    t_start = 0.0     ! [yr]
-    t_end   = 300000.0  ! [yr]
-    dt      = 5.0     ! [yr]
+    t_start = 0.0       ! [yr]
+    t_end   = 200000.0  ! [yr]
+    dt      = 5.0       ! [yr]
 
     file1D  = "test.nc" 
-    dt_out  = 20000.0      ! [yr] 
+    dt_out  = 10000.0      ! [yr] 
 
     nz      = 21           ! [--] Number of ice sheet points 
     nzr     = 11           ! [--] Number of bedrock points (for conductive bedrock solution)
 
+    dx      = 20e3         ! [m] Horizontal resolution (as input to imau solver - not currently used)
+
+    solver     = "mali"       ! "grisli", "imau", "mali" 
+    is_celcius = .FALSE. 
     ! ===============================================================
 
     ! Initialize time and calculate number of time steps to iterate and 
@@ -70,13 +94,13 @@ program test_icetemp
     
     ! Initialize icesheet object 
     call icesheet_allocate(ice1,nz=nz,nzr=nzr)
-    
+    nzt = nz - 1 
 
     ! Prescribe initial eismint conditions for testing 
     call init_eismint_summit(ice1)
 
     ! Initialize output file and write intial conditions 
-    call write_init(ice1,filename=file1D,sigma=ice1%up%sigma,time_init=time)
+    call write_init(ice1,filename=file1D,sigma=ice1%up%sigma,sigt=ice1%up%sigt,time_init=time)
     call write_step(ice1,ice1%up,filename=file1D,time=time)
 
     ! Transfer info to ice1%dwn format
@@ -88,19 +112,55 @@ program test_icetemp
         ! Get current time 
         time = t_start + n*dt 
 
-        ! Call grisli icetemp routine
-        call calc_icetemp_grisli_column(ice1%ibase,ice1%dwn%T_ice,ice1%dwn%T_rock,ice1%dwn%T_pmp, &
-                                        ice1%dwn%cp,ice1%dwn%kt,ice1%dwn%uz,ice1%dwn%Q_strn,ice1%dwn%advecxy, &
-                                        ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%is_float,dt)
-    
-        ! Transfer info back to ice1%up for writing
-        call icesheet_dwn_to_up(ice1%up,ice1%dwn)
+        select case(trim(solver))
+
+            case("grisli") 
+
+!                 ! Call grisli icetemp routine
+!                 call calc_icetemp_grisli_column_dwn(ice1%ibase,ice1%dwn%T_ice,ice1%dwn%T_rock,ice1%dwn%T_pmp, &
+!                                                     ice1%dwn%cp,ice1%dwn%kt,ice1%dwn%uz,ice1%dwn%Q_strn,ice1%dwn%advecxy, &
+!                                                     ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%is_float,dt)
+                
+!                 ! Transfer info back to ice1%up for writing
+!                 call icesheet_dwn_to_up(ice1%up,ice1%dwn)
+                    
+                
+!                 ! Test with temp-dependent thermal properties
+!                 ice1%up%cp      = calc_specific_heat_capacity(ice1%up%T_ice+T0)
+!                 ice1%up%kt      = calc_thermal_conductivity(ice1%up%T_ice+T0) 
+                
+                call calc_icetemp_grisli_column_up(ice1%up%T_ice,ice1%up%T_rock,ice1%up%T_pmp, &
+                                                   ice1%up%cp,ice1%up%kt,ice1%up%uz,ice1%up%Q_strn,ice1%up%advecxy, &
+                                                   ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%bmb,ice1%is_float, &
+                                                   ice1%up%sigma,dt)
+            
+            case("imau") 
+
+
+                call calc_icetemp_imau_column_up(ice1%up%T_ice,ice1%bmb,ice1%is_float,ice1%H_ice,ice1%T_srf,ice1%up%advecxy, &
+                                                 ice1%up%uz*0.0,ice1%up%uz*0.0,ice1%up%uz,0.0_prec,0.0_prec,0.0_prec, &
+                                                 0.0_prec,0.0_prec,0.0_prec,ice1%up%cp,ice1%up%kt,ice1%up%Q_strn, &
+                                                 ice1%Q_b,ice1%up%T_pmp,ice1%smb,ice1%Q_geo,ice1%up%sigma,dx,dt)
+
+            case("mali")
+
+                call calc_mali_temp_column(ice1%up%T_ice_aa,ice1%up%T_pmp_aa,ice1%up%cp_aa,ice1%up%kt_aa, &
+                                                ice1%up%uz,ice1%up%Q_strn_aa,ice1%up%advecxy_aa,ice1%Q_b, &
+                                                ice1%Q_geo,ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%bmb,ice1%is_float, &
+                                                ice1%up%sigma,ice1%up%sigt,ice1%up%dsigt_a,ice1%up%dsigt_b,dt)
+
+            case DEFAULT 
+
+                write(*,*) "test_icetemp:: Error: solver not recognized: "//trim(solver)
+                stop 
+
+        end select 
 
         if (mod(time,dt_out)==0) then 
             call write_step(ice1,ice1%up,filename=file1D,time=time)
         end if 
 
-        if (mod(time,20.0)==0) then
+        if (mod(time,50.0)==0) then
             write(*,"(a,f14.4)") "time = ", time
         end if 
 
@@ -111,17 +171,23 @@ program test_icetemp
     robin%up%T_ice = my_robin_solution(robin%up%sigma,robin%up%T_pmp,robin%up%kt,robin%up%cp,rho_ice, &
                                        robin%H_ice,robin%T_srf,robin%smb,robin%Q_geo,robin%is_float)
     
+    robin%up%T_ice_aa = my_robin_solution(robin%up%sigt,robin%up%T_pmp_aa,robin%up%kt_aa,robin%up%cp_aa,rho_ice, &
+                                          robin%H_ice,robin%T_srf,robin%smb,robin%Q_geo,robin%is_float)
+    robin%T_base = robin%up%T_ice_aa(1)
+        
     ! Write Robin solution for comparison 
     file1D = "robin.nc"
-    call write_init(robin,filename=file1D,sigma=robin%up%sigma,time_init=time)
+    call write_init(robin,filename=file1D,sigma=robin%up%sigma,sigt=ice1%up%sigt,time_init=time)
     call write_step(robin,robin%up,filename=file1D,time=time)
 
     ! Compare our solution with robin and write comparison results 
     diff = robin 
-    diff%up%T_ice = ice1%up%T_ice - robin%up%T_ice 
+    diff%up%T_ice    = ice1%up%T_ice      - robin%up%T_ice 
+    diff%up%T_ice_aa = ice1%up%T_ice_aa   - robin%up%T_ice_aa 
+    diff%T_base      = ice1%T_base        - robin%T_base 
 
     file1D = "diff.nc"
-    call write_init(diff,filename=file1D,sigma=diff%up%sigma,time_init=time)
+    call write_init(diff,filename=file1D,sigma=diff%up%sigma,sigt=ice1%up%sigt,time_init=time)
     call write_step(diff,diff%up,filename=file1D,time=time)
 
 
@@ -132,7 +198,7 @@ program test_icetemp
     write(*,*)
     write(*,*) "========================="
     write(*,*)
-    
+
 contains 
 
 
@@ -143,12 +209,14 @@ contains
         type(icesheet), intent(INOUT) :: ice
 
         ! Local variables 
-        integer :: k, nz, nzr 
+        integer :: k, nz, nzr, nzt  
 
         nz  = size(ice%up%T_ice)
         nzr = size(ice%up%T_rock) 
 
-        ice%T_srf    = 239.0-T0    ! [degC]
+        nzt = size(ice%up%T_ice_aa)
+
+        ice%T_srf    = 239.0       ! [K] 
         ice%smb      = 0.5         ! [m/a]
         ice%bmb      = 0.0         ! [m/a]
         ice%Q_geo    = 42.0        ! [mW/m2]
@@ -158,14 +226,20 @@ contains
         ice%is_float = .FALSE.     ! Grounded point 
         ice%ibase    = 1           ! Frozen 
 
+        ! EISMINT1
         ice%up%cp      = 2009.0    ! [J kg-1 K-1]
         ice%up%kt      = 6.67e7    ! [J a-1 m-1 K-1]
-    
+        
         ice%up%Q_strn  = 0.0       ! [] No internal strain heating 
         ice%up%advecxy = 0.0       ! [] No horizontal advection 
 
         ! Calculate pressure melting point 
-        ice%up%T_pmp = calc_T_pmp((1.0-ice%up%sigma)*ice%H_ice,T0) - T0 
+        ice%up%T_pmp = calc_T_pmp(ice%H_ice,ice%up%sigma,T0) 
+
+        if (is_celcius) then 
+            ice%T_srf    = ice%T_srf - T0
+            ice%up%T_pmp = ice%up%T_pmp - T0 
+        end if 
 
         ! Define surface temperature of ice based on simple atmospheric correction below zero
         ice%up%T_ice(nz) = ice%T_srf 
@@ -180,13 +254,27 @@ contains
 
         ice%up%T_rock = ice%up%T_ice(1) 
 
+        ! NEW: MALI style temps
+
+        ice%up%T_pmp_aa = calc_T_pmp(ice%H_ice,ice%up%sigt,T0) 
+        if (is_celcius) ice%up%T_pmp_aa = ice%up%T_pmp_aa - T0 
+
+        ice%T_base   = ice%up%T_ice(1)
+        do k = 1, nzt 
+            ice%up%T_ice_aa(k) = ice%T_base+ice%up%sigt(k)*(ice%T_srf-ice%T_base)
+        end do 
+
+        
+        ice%up%cp_aa = ice%up%cp(1)
+        ice%up%kt_aa = ice%up%kt(1)
+
         ! Define vertical velocity profile (linear)
         ice%up%uz(nz) = -ice%smb 
         ice%up%uz(1)  = 0.0 
         do k = 2, nz-1 
             ice%up%uz(k) = ice%up%uz(1)+(ice%up%sigma(k))*(ice%up%uz(nz)-ice%up%uz(1))
         end do 
-
+        
         return 
 
     end subroutine init_eismint_summit 
@@ -201,7 +289,9 @@ contains
         integer, intent(IN) :: nzr           ! Number of rock points 
 
         ! Local variables 
-        integer :: k 
+        integer :: k, nzt 
+
+        nzt = nz+1 
 
         ! First allocate 'up' variables (with vertical coordinate as height)
 
@@ -216,6 +306,16 @@ contains
         if (allocated(ice%up%advecxy)) deallocate(ice%up%advecxy)
         if (allocated(ice%up%Q_strn))  deallocate(ice%up%Q_strn)
         
+        if (allocated(ice%up%T_ice_aa)) deallocate(ice%up%T_ice_aa)
+        if (allocated(ice%up%T_pmp_aa)) deallocate(ice%up%T_pmp_aa)
+        if (allocated(ice%up%cp_aa))    deallocate(ice%up%cp_aa)
+        if (allocated(ice%up%kt_aa))    deallocate(ice%up%kt_aa)
+        if (allocated(ice%up%sigt))     deallocate(ice%up%sigt)
+        if (allocated(ice%up%dsigt_a))  deallocate(ice%up%dsigt_a)
+        if (allocated(ice%up%dsigt_b))  deallocate(ice%up%dsigt_b)
+        if (allocated(ice%up%advecxy_aa)) deallocate(ice%up%advecxy_aa)
+        if (allocated(ice%up%Q_strn_aa))  deallocate(ice%up%Q_strn_aa)
+        
         ! Allocate vectors with desired lengths
         allocate(ice%up%sigma(nz))
         allocate(ice%up%T_ice(nz))
@@ -227,11 +327,27 @@ contains
         allocate(ice%up%advecxy(nz))
         allocate(ice%up%Q_strn(nz))
 
+        allocate(ice%up%T_ice_aa(nzt))
+        allocate(ice%up%T_pmp_aa(nzt))
+        allocate(ice%up%cp_aa(nzt))
+        allocate(ice%up%kt_aa(nzt))
+        allocate(ice%up%sigt(nzt))
+        allocate(ice%up%dsigt_a(nzt))
+        allocate(ice%up%dsigt_b(nzt))
+        allocate(ice%up%advecxy_aa(nzt))
+        allocate(ice%up%Q_strn_aa(nzt))
+
         ! Initialize sigma and zeta 
         ice%up%sigma = 0.0  
         do k = 1, nz 
             ice%up%sigma(k) = real(k-1,prec) / real(nz-1,prec)
+            !write(*,*) ice%up%sigma(k)
         end do 
+
+        ice%up%sigma = ice%up%sigma**2.0
+        
+        ! NEW: calculate MALI-style sigma terms
+        call calc_sigt_terms(ice%up%sigt,ice%up%dsigt_a,ice%up%dsigt_b,ice%up%sigma)
 
         ! Initialize remaining vectors to zero 
         ice%up%T_ice   = 0.0 
@@ -243,9 +359,17 @@ contains
         ice%up%advecxy = 0.0  
         ice%up%Q_strn  = 0.0
 
+        ice%up%T_ice_aa = 0.0
+        ice%up%T_pmp_aa = 0.0
+        ice%up%cp_aa    = 0.0
+        ice%up%kt_aa    = 0.0
+        ice%up%advecxy_aa = 0.0  
+        ice%up%Q_strn_aa  = 0.0
+
         ! Now allocate down variables too (with vertical coordinate as depth)
         ice%dwn = ice%up 
-        ice%dwn%sigma = 1.0 - ice%up%sigma 
+        ice%dwn%sigma    = 1.0 - ice%up%sigma 
+        ice%dwn%sigt     = 1.0 - ice%up%sigt 
 
         write(*,*) "Allocated icesheet variables."
 
@@ -253,13 +377,14 @@ contains
 
     end subroutine icesheet_allocate 
 
-    subroutine write_init(ice,filename,sigma,time_init)
+    subroutine write_init(ice,filename,sigma,sigt,time_init)
 
         implicit none 
 
         type(icesheet),   intent(IN) :: ice 
         character(len=*), intent(IN) :: filename 
         real(prec),       intent(IN) :: sigma(:) 
+        real(prec),       intent(IN) :: sigt(:) 
         real(prec),       intent(IN) :: time_init
 
         ! Local variables 
@@ -272,6 +397,7 @@ contains
         call nc_create(filename)
         call nc_write_dim(filename,"sigma", x=sigma, units="1")
         call nc_write_dim(filename,"sigmar",x=0,nx=nzr,dx=1,units="1")
+        call nc_write_dim(filename,"sigt", x=sigt, units="1")
         call nc_write_dim(filename,"time",  x=time_init,dx=1.0_prec,nx=1,units="years",unlimited=.TRUE.)
 
         return
@@ -291,6 +417,9 @@ contains
         integer    :: ncid, n
         real(prec) :: time_prev 
         character(len=12), parameter :: vert_dim = "sigma"
+        integer    :: nzt   
+
+        nzt = size(vecs%sigt) 
 
         ! Open the file for writing
         call nc_open(filename,ncid,writable=.TRUE.)
@@ -323,6 +452,11 @@ contains
         call nc_write(filename,"H_ice",   ice%H_ice,units="m",long_name="Ice thickness",dim1="time",start=[n],ncid=ncid)
         call nc_write(filename,"H_w",     ice%H_w,units="m",long_name="Basal water thickness",dim1="time",start=[n],ncid=ncid)
         call nc_write(filename,"is_float",ice%is_float,units="",long_name="Floating flag",dim1="time",start=[n],ncid=ncid)
+        
+        ! New - Mali style 
+        call nc_write(filename,"T_ice_aa",vecs%T_ice_aa,  units="degC",   long_name="Ice temperature",         dim1="sigt",dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"T_pmp_aa",vecs%T_pmp_aa,  units="degC",   long_name="PMP Ice temperature",     dim1="sigt",dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"T_base",  ice%T_base,     units="degC",   long_name="Basal temperature",       dim1="time",start=[n],ncid=ncid)
         
         ! Close the netcdf file
         call nc_close(ncid)

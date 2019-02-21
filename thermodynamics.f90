@@ -4,38 +4,88 @@ module thermodynamics
     ! Note: once icetemp is working well, this module could be 
     ! remerged into icetemp as one module. 
 
-    use defs, only : prec, sec_year, pi, T0 
+    use defs, only : prec, sec_year, pi, T0, g, rho_ice   
 
     implicit none 
 
     real(prec), parameter :: L_ice = 3.35e5       ! Specific latent heat of fusion of ice [J Kg-1]
 
-    private 
+    private  
+    public :: calc_advec_horizontal_column_sico1
     public :: calc_advec_horizontal_column
     public :: calc_basal_temp_gradients_column
     public :: calc_bmb_grounded
     public :: calc_strain_heating
+    public :: calc_strain_heating_sia
     public :: calc_basal_heating
     public :: calc_specific_heat_capacity
     public :: calc_thermal_conductivity
     public :: calc_T_pmp
-    public :: calc_f_pmp 
+    public :: calc_f_pmp
+    public :: calc_icetemp_robin_3D
     public :: my_robin_solution 
     public :: error_function
     
-contains 
+contains
 
-
-        subroutine calc_advec_horizontal_column(advecxy,var_ice,ux,uy,dx,i,j)
-        ! Newly implemented advection algorithms (ajr) 
-        ! Output: [K a-1 m-2]
+    subroutine calc_advec_horizontal_column_sico1(advecxy,var,ux,uy,dx,i,j)
+        ! Ported from sicopolis5-dev
 
         implicit none
 
         real(prec), intent(OUT) :: advecxy(:) 
-        real(prec), intent(IN)  :: var_ice(:,:,:)   ! Enth, T, age, etc...
+        real(prec), intent(IN)  :: var(:,:,:)   ! Enth, T, age, etc...
         real(prec), intent(IN)  :: ux(:,:,:) 
         real(prec), intent(IN)  :: uy(:,:,:)
+        real(prec), intent(IN)  :: dx  
+        integer,    intent(IN)  :: i, j 
+
+        ! Local variables 
+        integer :: k, nx, ny, nz 
+        real(prec) :: ux_aa, uy_aa 
+        real(prec) :: dx_inv, dy_inv 
+        real(prec) :: advecx, advecy 
+
+        ! Define some constants 
+        dx_inv  = 1.0_prec / dx 
+        dy_inv  = dx_inv 
+
+        nz = size(var,3) 
+
+        advecxy = 0.0_prec 
+
+        ! Loop over each point in the column
+        do k = 1, nz 
+
+            ! Estimate direction of current flow into cell (x and y)
+            ux_aa = 0.5_prec*(ux(i,j,k)+ux(i-1,j,k))
+            uy_aa = 0.5_prec*(uy(i,j,k)+uy(i,j-1,k))
+
+            advecxy(k) =  dx_inv* &
+                          ( min(ux_aa, 0.0_prec)*(var(i+1,j,k)-var(i,j,k))   &
+                           +max(ux_aa, 0.0_prec)*(var(i,j,k)  -var(i-1,j,k)) ) &
+                        + dy_inv* &
+                          ( min(uy_aa, 0.0_prec)*(var(i,j+1,k)-var(i,j,k)) &
+                           +max(uy_aa, 0.0_prec)*(var(i,j,k)  -var(i,j-1,k)) )
+
+        end do 
+
+        return 
+
+    end subroutine calc_advec_horizontal_column_sico1
+
+    subroutine calc_advec_horizontal_column(advecxy,var_ice,ux,uy,dx,i,j)
+        ! Newly implemented advection algorithms (ajr)
+        ! Output: [K a-1]
+
+        ! [m-1] * [m a-1] * [K] = [K a-1]
+
+        implicit none
+
+        real(prec), intent(OUT) :: advecxy(:)       ! nzt = nz+1 
+        real(prec), intent(IN)  :: var_ice(:,:,:)   ! nx,ny,nzt  Enth, T, age, etc...
+        real(prec), intent(IN)  :: ux(:,:,:)        ! nx,ny,nz
+        real(prec), intent(IN)  :: uy(:,:,:)        ! nx,ny,nz
         real(prec), intent(IN)  :: dx  
         integer,    intent(IN)  :: i, j 
 
@@ -53,29 +103,32 @@ contains
         ny = size(var_ice,2)
         nz = size(var_ice,3) 
 
-        ! Loop over each point in the column
-        do k = 1, nz 
+        advecx = 0.0 
+        advecy = 0.0 
 
-            ! Estimate direction of current flow into cell (x and y)
-            ux_aa = 0.5_prec*(ux(i,j,k)+ux(i-1,j,k))
-            uy_aa = 0.5_prec*(uy(i,j,k)+uy(i,j-1,k))
+        ! Loop over each point in the column
+        do k = 2, nz 
+
+            ! Estimate direction of current flow into cell (x and y), centered in vertical layer and grid point
+            ux_aa = 0.25_prec*(ux(i,j,k)+ux(i-1,j,k)+ux(i,j,k-1)+ux(i-1,j,k-1))
+            uy_aa = 0.25_prec*(uy(i,j,k)+uy(i,j-1,k)+uy(i,j,k-1)+uy(i,j-1,k-1))
 
             ! Explicit form (to test different order approximations)
             if (ux_aa .gt. 0.0 .and. i .ge. 3) then  
                 ! Flow to the right 
 
                 ! 1st order
-!                 advecx = dx_inv * ux(i-1,j,k)*(var_ice(i,j,k)-var_ice(i-1,j,k))
+!                 advecx = dx_inv * 0.5*(ux(i-1,j,k)+ux(i-1,j,k-1))*(var_ice(i,j,k)-var_ice(i-1,j,k))
                 ! 2nd order
-                advecx = dx_inv2 * ux(i-1,j,k)*(-(4.0*var_ice(i-1,j,k)-var_ice(i-2,j,k)-3.0*var_ice(i,j,k)))
+                advecx = dx_inv2 * 0.5*(ux(i-1,j,k)+ux(i-1,j,k-1))*(-(4.0*var_ice(i-1,j,k)-var_ice(i-2,j,k)-3.0*var_ice(i,j,k)))
             
             else if (ux_aa .lt. 0.0 .and. i .le. nx-2) then 
                 ! Flow to the left
 
                 ! 1st order 
-!                 advecx = dx_inv * ux(i,j,k)*(var_ice(i+1,j,k)-var_ice(i,j,k))
+!                 advecx = dx_inv * 0.5*(ux(i,j,k)+ux(i,j,k-1))*(var_ice(i+1,j,k)-var_ice(i,j,k))
                 ! 2nd order
-                advecx = dx_inv2 * ux(i,j,k)*((4.0*var_ice(i+1,j,k)-var_ice(i+2,j,k)-3.0*var_ice(i,j,k)))
+                advecx = dx_inv2 * 0.5*(ux(i,j,k)+ux(i,j,k-1))*((4.0*var_ice(i+1,j,k)-var_ice(i+2,j,k)-3.0*var_ice(i,j,k)))
             
             else 
                 ! No flow 
@@ -87,17 +140,17 @@ contains
                 ! Flow to the right 
 
                 ! 1st order
-!                 advecy = dx_inv * uy(i,j-1,k)*(var_ice(i,j,k)-var_ice(i,j-1,k))
+!                 advecy = dx_inv * 0.5*(uy(i,j-1,k)+uy(i,j-1,k-1))*(var_ice(i,j,k)-var_ice(i,j-1,k))
                 ! 2nd order
-                advecy = dx_inv2 * uy(i,j-1,k)*(-(4.0*var_ice(i,j-1,k)-var_ice(i,j-2,k)-3.0*var_ice(i,j,k)))
+                advecy = dx_inv2 * 0.5*(uy(i,j-1,k)+uy(i,j-1,k-1))*(-(4.0*var_ice(i,j-1,k)-var_ice(i,j-2,k)-3.0*var_ice(i,j,k)))
             
             else if (uy_aa .lt. 0.0 .and. j .le. ny-2) then 
                 ! Flow to the left
 
                 ! 1st order 
-!                 advecy = dx_inv * uy(i,j,k)*(var_ice(i,j+1,k)-var_ice(i,j,k))
+!                 advecy = dx_inv * 0.5*(uy(i,j,k)+uy(i,j,k-1))*(var_ice(i,j+1,k)-var_ice(i,j,k))
                 ! 2nd order
-                advecy = dx_inv2 * uy(i,j,k)*((4.0*var_ice(i,j+1,k)-var_ice(i,j+2,k)-3.0*var_ice(i,j,k)))
+                advecy = dx_inv2 * 0.5*(uy(i,j,k)+uy(i,j,k-1))*((4.0*var_ice(i,j+1,k)-var_ice(i,j+2,k)-3.0*var_ice(i,j,k)))
             
             else
                 ! No flow 
@@ -144,7 +197,7 @@ contains
 
         ! Get gradient in rock 
         dz = H_rock * (sigmar(nzr)-sigma(nzr-1))
-        dTrdz_b = (T_rock(nzr) - T_rock(nzr-1)) / dz  
+        dTrdz_b = (T_ice(1) - T_rock(nzr)) / dz  
         
         return 
 
@@ -195,6 +248,7 @@ contains
 !                 end if 
             
             bmb_grnd = -1.0_prec/(rho_ice*L_ice)* ( Q_b + kt_b*dTdz_b - kt_m*dTrdz_b ) 
+!             bmb_grnd = -1.0_prec/(rho_ice*L_ice)* ( Q_b + kt_b*dTdz_b + (Q_geo_now) )
 
         else 
             ! No basal mass change possible if bed is not temperate 
@@ -219,16 +273,36 @@ contains
 
         implicit none
 
-        real(prec), intent(OUT) :: Q_strn(:,:,:)          ! [K a-1] Heat production
-        real(prec),            intent(IN) :: de(:,:,:)    ! [UNITS?] Effective strain rate 
-        real(prec),            intent(IN) :: visc(:,:,:)  ! [UNITS?] Viscosity
-        real(prec),            intent(IN) :: cp(:,:,:)    ! [J kg-1 K-1] Specific heat capacity
-        real(prec),            intent(IN) :: rho_ice      ! [kg m-3] Ice density 
+        real(prec),            intent(OUT) :: Q_strn(:,:,:)     ! [K a-1] Heat production
+        !type(stress_3D_class), intent(IN)  :: strss             ! Stress tensor
+        !type(strain_3D_class), intent(IN)  :: strn              ! Strain rate tensor
+        real(prec),            intent(IN)  :: de(:,:,:)          ! [a-1] Effective strain rate 
+        real(prec),            intent(IN)  :: visc(:,:,:)        ! [Pa a-1] Viscosity
+        real(prec),            intent(IN)  :: cp(:,:,:)          ! [J kg-1 K-1] Specific heat capacity
+        real(prec),            intent(IN)  :: rho_ice            ! [kg m-3] Ice density 
 
         ! Local variables
-        real(prec), parameter :: Q_strn_max = 0.1         ! Check this limit!! 
+        integer :: i, j, k, nx, ny, nz 
+        real(prec), parameter :: Q_strn_max = 1.0         ! Check this limit!! 
 
-        ! Simple approach:
+        nx = size(Q_strn,1)
+        ny = size(Q_strn,2)
+        nz = size(Q_strn,3)
+
+        ! Note: we use the simpler approach because in the shallow
+        ! model, the stress rate is simply the strain rate squared
+
+        ! Directly from Q_strn = tr(stress*strain)/cp
+        ! (Cuffey and Patterson (2010) pag. 417, eq. 9.30)
+
+!         Q_strn = ( strss%txx*strn%dxx &
+!                  + strss%tyy*strn%dyy &
+!                  + strss%tzz*strn%dzz &    ! this term is not available yet in the code, needs to be calculated
+!              + 2.0*strss%txy*strn%dxy &
+!              + 2.0*strss%txz*strn%dxz &
+!              + 2.0*strss%tyz*strn%dyz ) * 1.0/(cp*rho_ice) 
+
+        ! Simpler approach:
         ! Calculate Q_strn from effective strain rate and viscosity
         ! (Greve and Blatter (2009) eqs. 4.7 and 5.65): 
         !     Q_strn = tr(stress*strn)/cp = tr(2*visc*strn*strn)/cp = 2*visc*tr(strn*strn)/cp = 4*visc*de^2/cp
@@ -236,12 +310,111 @@ contains
 
         Q_strn = 4.0*visc*de**2 * 1.0/(cp*rho_ice) 
 
+        !Q_strn = 4.0*0.5*BTT*de**(-2/3)*de**2 
+        !Q_strn = 2.0*BTT*de**(4/3)
+
         ! Limit strain heating to reasonable values 
         where (Q_strn .gt. Q_strn_max) Q_strn = Q_strn_max
 
         return 
 
     end subroutine calc_strain_heating
+
+    subroutine calc_strain_heating_sia(Q_strn,ux,uy,dzsdx,dzsdy,cp,H_ice,rho_ice,sigma)
+
+        ! Calculate the general 3D internal strain heating
+        ! as sum(D_ij*tau_ij)  (strain*stress)
+        ! where stress has been calculated as stress_ij = 2*visc*strain
+        ! Units: Q_strn = Q * 1/(cp*rho) = [J a-1 m-3] * [K m3 J-1] = [K a-1]
+
+        ! Q_strn = rho*g*H*(duxdz*dzsdx + duydz*dzsdy) / (rho*cp)
+        ! Units: [K a-1]
+        ! Note: rho_ice / rho_ice removed from equation 
+        
+        implicit none
+
+        real(prec),            intent(OUT) :: Q_strn(:,:,:)     ! [Pa m a-1 ??] Heat production
+        real(prec),            intent(IN)  :: ux(:,:,:)          ! [m a-1] Velocity x-direction
+        real(prec),            intent(IN)  :: uy(:,:,:)          ! [m a-1] Velocity y-direction
+        real(prec),            intent(IN)  :: dzsdx(:,:)       ! [m m-1] Surface slope x-direction
+        real(prec),            intent(IN)  :: dzsdy(:,:)       ! [m m-1] Surface slope y-direction
+        real(prec),            intent(IN)  :: cp(:,:,:)          ! [J/kg/K] Specific heat capacity
+        real(prec),            intent(IN)  :: H_ice(:,:)         ! [m] Ice thickness
+        real(prec),            intent(IN)  :: rho_ice            ! [kg m-3] Ice density 
+        real(prec),            intent(IN)  :: sigma(:)           ! [-] Height axis 
+
+        ! Local variables
+        integer :: i, j, k, nx, ny, nz 
+        real(prec), parameter :: Q_strn_max = 1.0         ! Check this limit!! 
+        real(prec) :: ux_aa_up, ux_aa_dwn
+        real(prec) :: uy_aa_up, uy_aa_dwn
+        real(prec) :: duxdz, duydz
+        real(prec) :: dzsdx_aa, dzsdy_aa  
+        real(prec) :: dz, depth 
+
+        nx = size(Q_strn,1)
+        ny = size(Q_strn,2)
+        nz = size(Q_strn,3)
+
+        Q_strn = 0.0 
+
+        do j = 2, ny 
+        do i = 2, nx 
+
+            if (H_ice(i,j) .gt. 0.0) then 
+                ! Only calculate strain rate where ice exists on aa-nodes 
+
+                do k = 1, nz 
+                    ! Loop over the vertical column of ice 
+
+                    if (k .lt. nz) then 
+                        ux_aa_up  = 0.25*(ux(i-1,j,k)+ux(i,j,k)+ux(i-1,j,k+1)+ux(i,j,k+1))
+                        uy_aa_up  = 0.25*(uy(i,j-1,k)+uy(i,j,k)+uy(i,j-1,k+1)+uy(i,j,k+1))
+                    else 
+                        ux_aa_up  = 0.0 
+                        uy_aa_up  = 0.0 
+                    end if 
+
+                    if (k .gt. 1) then 
+                        ux_aa_dwn = 0.25*(ux(i-1,j,k)+ux(i,j,k)+ux(i-1,j,k-1)+ux(i,j,k-1))
+                        uy_aa_dwn = 0.25*(uy(i,j-1,k)+uy(i,j,k)+uy(i,j-1,k-1)+uy(i,j,k-1))
+                    else 
+                        ux_aa_dwn = 0.0 
+                        uy_aa_dwn = 0.0 
+                    end if 
+                    
+                    if (k .lt. nz .and. k .gt. 1) then 
+                        dz = H_ice(i,j)*(0.5*(sigma(k+1)-sigma(k-1)))
+                    else if (k .eq. 1) then 
+                        dz = H_ice(i,j)*(0.5*sigma(k+1)-sigma(k))
+                    else if (k .eq. nz) then 
+                        dz = H_ice(i,j)*(0.5*sigma(k)-sigma(k-1))
+                    end if 
+
+                    duxdz = (ux_aa_up-ux_aa_dwn)/dz 
+                    duydz = (uy_aa_up-uy_aa_dwn)/dz 
+
+                    dzsdx_aa = 0.5*(dzsdx(i-1,j)+dzsdx(i,j))
+                    dzsdy_aa = 0.5*(dzsdy(i,j-1)+dzsdy(i,j))
+                    
+                    depth = H_ice(i,j)*(1.0-sigma(k))
+                    
+                    Q_strn(i,j,k) = (-g*depth / cp(i,j,k)) * (duxdz*dzsdx_aa + duydz*dzsdy_aa)
+                    
+                end do 
+
+            end if 
+
+        end do 
+        end do 
+
+        ! [m s-1] [m] 
+        ! Limit strain heating to reasonable values 
+        where (Q_strn .gt. Q_strn_max) Q_strn = Q_strn_max
+
+        return 
+
+    end subroutine calc_strain_heating_sia
 
     subroutine calc_basal_heating(Q_b,Q_strn_b,ux_base,uy_base,taub_acx,taub_acy,f_grnd_acx,f_grnd_acy)
         ! Qb [J a-1 m-2] == [m a-1] * [J m-3]
@@ -287,7 +460,7 @@ contains
         end do
 
         ! Add strain heating in basal layer of ice sheet 
-        Q_b = Q_b + Q_strn_b 
+        Q_b = Q_b !+ Q_strn_b 
 
         return 
 
@@ -321,21 +494,28 @@ contains
 
     end function calc_thermal_conductivity
     
-    elemental function calc_T_pmp(H_ice,T0) result(T_pmp)
+    elemental function calc_T_pmp(H_ice,sigma,T0) result(T_pmp)
         ! Greve and Blatter (Chpt 4, pg 54), Eq. 4.13
         ! This gives the pressure-corrected melting point of ice
-        ! where H_ice is the thickness of ice overlying the current point 
+        ! where H_ice*(1-sigma) is the thickness of ice overlying the current point 
         
         implicit none 
 
-        real(prec), intent(IN) :: H_ice  ! [m] Ice thickness above this point
+        real(prec), intent(IN) :: H_ice  ! [m] Total ice thickness of this point
+        real(prec), intent(IN) :: sigma  ! [-] Fractional height of this point within the ice
         real(prec), intent(IN) :: T0     ! [K] Reference freezing point of water (273.15 K)
         real(prec) :: T_pmp              ! [K] Pressure corrected melting point
 
-        ! Local variables  
+        ! Local variables
+        real(prec) :: depth   
         real(prec), parameter :: beta1 = 8.74e-4    ! [K m^-1]   beta1 = (beta*rho*g), beta=9.8e-8 [K Pa^-1]
+        !real(prec), parameter :: beta1 = 8.66e-4    ! [K m^-1]   EISMINT2 value
+        
+        ! Get thickness of ice above current point
+        depth = H_ice*(1.0-sigma)
 
-        T_pmp = T0 - beta1*H_ice 
+        ! Calculate the pressure-corrected melting point
+        T_pmp = T0 - beta1*depth
 
         ! ajr: note: should we account here for whether ice is floating or not, changing the pressure? 
         
@@ -388,6 +568,48 @@ contains
 
     end function calc_f_pmp 
     
+    subroutine calc_icetemp_robin_3D(T_ice,T_pmp,cp,ct,Q_geo,T_srf,H_ice,H_w,smb,bmb,f_grnd,sigma)
+        ! Robin solution for thermodynamics for a given column of ice 
+        ! Note sigma=height, k=1 base, k=nz surface 
+        ! Note T_ice, T_pmp in [degC], not [K]
+
+        implicit none 
+
+        real(prec), intent(OUT) :: T_ice(:,:,:)     ! [degC] Ice column temperature
+        real(prec), intent(IN)  :: T_pmp(:,:,:)     ! [degC] Pressure melting point temp.
+        real(prec), intent(IN)  :: cp(:,:,:)        ! [J kg-1 K-1] Specific heat capacity
+        real(prec), intent(IN)  :: ct(:,:,:)        ! [J a-1 m-1 K-1] Heat conductivity 
+        real(prec), intent(IN)  :: Q_geo(:,:)       ! [mW m-2] Geothermal heat flux 
+        real(prec), intent(IN)  :: T_srf(:,:)       ! [degC] Surface temperature 
+        real(prec), intent(IN)  :: H_ice(:,:)       ! [m] Ice thickness 
+        real(prec), intent(IN)  :: H_w(:,:)         ! [m] Basal water layer thickness 
+        real(prec), intent(IN)  :: smb(:,:)         ! [m a-1] Surface mass balance (melting is negative)
+        real(prec), intent(IN)  :: bmb(:,:)         ! [m a-1] Basal mass balance (melting is negative)
+        real(prec), intent(IN)  :: f_grnd(:,:)      ! [--] Floating point or grounded?
+        real(prec), intent(IN)  :: sigma(:)         ! [--] Vertical sigma coordinates (sigma==height)
+
+        ! Local variable
+        integer :: i, j, nx, ny  
+        logical :: is_float 
+        
+        nx = size(T_ice,1)
+        ny = size(T_ice,2)
+
+        do j = 1, ny
+        do i = 1, nx 
+
+            is_float = (f_grnd(i,j) .eq. 0.0)
+
+            T_ice(i,j,:) = my_robin_solution(sigma,T_pmp(i,j,:),ct(i,j,:),cp(i,j,:),rho_ice,H_ice(i,j), &
+                                             T_srf(i,j),smb(i,j)+bmb(i,j),Q_geo(i,j),is_float)
+
+        end do 
+        end do 
+
+        return 
+
+    end subroutine calc_icetemp_robin_3D
+
     function my_robin_solution(sigma,T_pmp,kt,cp,rho_ice,H_ice,T_srf,mb_net,Q_geo,is_float) result(T_ice)
         ! This function will impose a temperature solution in a given ice column.
         ! For:
@@ -418,8 +640,8 @@ contains
         real(prec), parameter :: sqrt_pi   = sqrt(pi) 
         real(prec), parameter :: T_ocn     = 271.15   ! [K]
         real(prec), parameter :: H_ice_min = 0.1      ! [m] Minimum ice thickness to calculate Robin solution 
-
-        real(prec) :: Q_geo_now 
+        real(prec), parameter :: mb_net_min = 1e-2    ! [m a-1] Minimum allowed net mass balance for stability
+        real(prec) :: Q_geo_now, mb_now  
 
         nz = size(T_ice,1) 
         
@@ -431,20 +653,23 @@ contains
         if (.not. is_float .and. H_ice .gt. H_ice_min .and. mb_net .gt. 0.0) then 
             ! Impose Robin solution 
             
+            !mb_now = max(mb_net,mb_net_min)
+            mb_now = mb_net 
+
             do k = 1, nz 
                 z     = sigma(k)*H_ice              ! Ice thickness up to this layer from base 
                 kappa = kt(k)/(cp(k)*rho_ice)       ! Thermal diffusivity 
-                ll    = sqrt(2*kappa*H_ice/mb_net)  ! Thermal_length_scale
+                ll    = sqrt(2*kappa*H_ice/mb_now)  ! Thermal_length_scale
 
                 ! Calculate ice temperature for this layer 
                 T_ice(k) = (sqrt_pi/2.0)*ll*dTdz_b*(error_function(z/ll)-error_function(H_ice/ll)) + T_srf 
             end do 
 
         else if (.not. is_float .and. H_ice .gt. H_ice_min) then 
-            ! Impose linear profile 
+            ! Impose linear profile with temperate base
 
             T_ice(nz) = T_srf
-            T_ice(1)  = calc_T_pmp(H_ice,T0) - 10.0 
+            T_ice(1)  = T_pmp(1)
 
             ! Intermediate layers are linearly interpolated 
             do k = 2, nz-1 
@@ -464,7 +689,7 @@ contains
             
         else 
             ! Ice thickness too small 
-            T_ice = T_srf 
+            T_ice = T_pmp 
 
         end if 
 
