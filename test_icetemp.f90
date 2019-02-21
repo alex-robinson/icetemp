@@ -34,7 +34,7 @@ program test_icetemp
         real(prec) :: Q_b       ! [] Basal heat production 
         logical    :: is_float  ! [-] Floating flag 
         
-        type(icesheet_vectors) :: up     ! For height coordinate systems with k=1 base and k=nz surface
+        type(icesheet_vectors) :: vec     ! For height coordinate systems with k=1 base and k=nz surface
 
     end type 
 
@@ -78,22 +78,22 @@ program test_icetemp
     call init_eismint_summit(ice1)
 
     ! Initialize output file and write intial conditions 
-    call write_init(ice1,filename=file1D,zeta=ice1%up%zeta,time_init=time)
-    call write_step(ice1,ice1%up,filename=file1D,time=time)
-    
+    call write_init(ice1,filename=file1D,zeta=ice1%vec%zeta,time_init=time)
+    call write_step(ice1,ice1%vec,filename=file1D,time=time)
+
     ! Loop over time steps and perform thermodynamic calculations
     do n = 1, ntot 
 
         ! Get current time 
         time = t_start + n*dt 
 
-        call calc_temp_column(ice1%up%T_ice,ice1%bmb,ice1%dTdz_b,ice1%up%T_pmp,ice1%up%cp,ice1%up%kt, &
-                                ice1%up%uz,ice1%up%Q_strn,ice1%up%advecxy,ice1%Q_b,ice1%Q_geo, &
-                                ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%is_float,ice1%up%zeta, &
-                                ice1%up%zeta_ac,ice1%up%dzeta_a,ice1%up%dzeta_b,dt)
+        call calc_temp_column(ice1%vec%T_ice,ice1%bmb,ice1%dTdz_b,ice1%vec%T_pmp,ice1%vec%cp,ice1%vec%kt, &
+                                ice1%vec%uz,ice1%vec%Q_strn,ice1%vec%advecxy,ice1%Q_b,ice1%Q_geo, &
+                                ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%is_float,ice1%vec%zeta, &
+                                ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b,dt)
 
         if (mod(time,dt_out)==0) then 
-            call write_step(ice1,ice1%up,filename=file1D,time=time)
+            call write_step(ice1,ice1%vec,filename=file1D,time=time)
         end if 
 
         if (mod(time,50.0)==0) then
@@ -104,21 +104,21 @@ program test_icetemp
 
     ! Also calculate the robin solution for comparison 
     robin = ice1  
-    robin%up%T_ice = calc_temp_robin_column(robin%up%zeta,robin%up%T_pmp,robin%up%kt,robin%up%cp,rho_ice, &
+    robin%vec%T_ice = calc_temp_robin_column(robin%vec%zeta,robin%vec%T_pmp,robin%vec%kt,robin%vec%cp,rho_ice, &
                                        robin%H_ice,robin%T_srf,robin%smb,robin%Q_geo,robin%is_float)
 
     ! Write Robin solution for comparison 
     file1D = "robin.nc"
-    call write_init(robin,filename=file1D,zeta=robin%up%zeta,time_init=time)
-    call write_step(robin,robin%up,filename=file1D,time=time)
+    call write_init(robin,filename=file1D,zeta=robin%vec%zeta,time_init=time)
+    call write_step(robin,robin%vec,filename=file1D,time=time)
 
     ! Compare our solution with robin and write comparison results 
     diff = robin 
-    diff%up%T_ice    = ice1%up%T_ice - robin%up%T_ice  
+    diff%vec%T_ice    = ice1%vec%T_ice - robin%vec%T_ice  
 
     file1D = "diff.nc"
-    call write_init(diff,filename=file1D,zeta=diff%up%zeta,time_init=time)
-    call write_step(diff,diff%up,filename=file1D,time=time)
+    call write_init(diff,filename=file1D,zeta=diff%vec%zeta,time_init=time)
+    call write_step(diff,diff%vec,filename=file1D,time=time)
 
 
     write(*,*)
@@ -141,8 +141,8 @@ contains
         ! Local variables 
         integer :: k, nz, nz_ac  
 
-        nz    = size(ice%up%zeta)
-        nz_ac = size(ice%up%zeta_ac) 
+        nz    = size(ice%vec%zeta)
+        nz_ac = size(ice%vec%zeta_ac) 
 
         ! Assign point values
         ice%T_srf    = 239.0       ! [K] 
@@ -155,36 +155,36 @@ contains
         ice%is_float = .FALSE.     ! Grounded point 
 
         ! EISMINT1
-        ice%up%cp      = 2009.0    ! [J kg-1 K-1]
-        ice%up%kt      = 6.67e7    ! [J a-1 m-1 K-1]
+        ice%vec%cp      = 2009.0    ! [J kg-1 K-1]
+        ice%vec%kt      = 6.67e7    ! [J a-1 m-1 K-1]
         
-        ice%up%Q_strn  = 0.0       ! [] No internal strain heating 
-        ice%up%advecxy = 0.0       ! [] No horizontal advection 
+        ice%vec%Q_strn  = 0.0       ! [] No internal strain heating 
+        ice%vec%advecxy = 0.0       ! [] No horizontal advection 
 
         ! Calculate pressure melting point 
-        ice%up%T_pmp = calc_T_pmp(ice%H_ice,ice%up%zeta,T0) 
+        ice%vec%T_pmp = calc_T_pmp(ice%H_ice,ice%vec%zeta,T0) 
 
         if (is_celcius) then 
             ice%T_srf    = ice%T_srf    - T0
-            ice%up%T_pmp = ice%up%T_pmp - T0 
+            ice%vec%T_pmp = ice%vec%T_pmp - T0 
         end if 
 
         ! Define initial temperature profile, linear 
         ! from T_srf at the surface to 10deg below freezing point at the base
 
-        ice%up%T_ice(nz) = ice%T_srf 
-        ice%up%T_ice(1)  = ice%up%T_pmp(1) - 10.0 
+        ice%vec%T_ice(nz) = ice%T_srf 
+        ice%vec%T_ice(1)  = ice%vec%T_pmp(1) - 10.0 
 
         ! Intermediate layers are linearly interpolated 
         do k = 2, nz-1 
-            ice%up%T_ice(k) = ice%up%T_ice(1)+ice%up%zeta(k)*(ice%up%T_ice(nz)-ice%up%T_ice(1))
+            ice%vec%T_ice(k) = ice%vec%T_ice(1)+ice%vec%zeta(k)*(ice%vec%T_ice(nz)-ice%vec%T_ice(1))
         end do 
 
         ! Define linear vertical velocity profile
-        ice%up%uz(nz) = -ice%smb 
-        ice%up%uz(1)  = 0.0 
+        ice%vec%uz(nz) = -ice%smb 
+        ice%vec%uz(1)  = 0.0 
         do k = 2, nz-1 
-            ice%up%uz(k) = ice%up%uz(1)+(ice%up%zeta(k))*(ice%up%uz(nz)-ice%up%uz(1))
+            ice%vec%uz(k) = ice%vec%uz(1)+(ice%vec%zeta(k))*(ice%vec%uz(nz)-ice%vec%uz(1))
         end do 
         
         return 
@@ -207,57 +207,57 @@ contains
         ! First allocate 'up' variables (with vertical coordinate as height)
 
         ! Make sure all vectors are deallocated
-        if (allocated(ice%up%zeta))     deallocate(ice%up%zeta)
-        if (allocated(ice%up%zeta_ac))  deallocate(ice%up%zeta_ac)
-        if (allocated(ice%up%dzeta_a))  deallocate(ice%up%dzeta_a)
-        if (allocated(ice%up%dzeta_b))  deallocate(ice%up%dzeta_b)
+        if (allocated(ice%vec%zeta))     deallocate(ice%vec%zeta)
+        if (allocated(ice%vec%zeta_ac))  deallocate(ice%vec%zeta_ac)
+        if (allocated(ice%vec%dzeta_a))  deallocate(ice%vec%dzeta_a)
+        if (allocated(ice%vec%dzeta_b))  deallocate(ice%vec%dzeta_b)
         
-        if (allocated(ice%up%T_ice))   deallocate(ice%up%T_ice)
-        if (allocated(ice%up%T_pmp))   deallocate(ice%up%T_pmp)
-        if (allocated(ice%up%cp))      deallocate(ice%up%cp)
-        if (allocated(ice%up%kt))      deallocate(ice%up%kt)
-        if (allocated(ice%up%uz))      deallocate(ice%up%uz)
-        if (allocated(ice%up%advecxy)) deallocate(ice%up%advecxy)
-        if (allocated(ice%up%Q_strn))  deallocate(ice%up%Q_strn)
+        if (allocated(ice%vec%T_ice))   deallocate(ice%vec%T_ice)
+        if (allocated(ice%vec%T_pmp))   deallocate(ice%vec%T_pmp)
+        if (allocated(ice%vec%cp))      deallocate(ice%vec%cp)
+        if (allocated(ice%vec%kt))      deallocate(ice%vec%kt)
+        if (allocated(ice%vec%uz))      deallocate(ice%vec%uz)
+        if (allocated(ice%vec%advecxy)) deallocate(ice%vec%advecxy)
+        if (allocated(ice%vec%Q_strn))  deallocate(ice%vec%Q_strn)
 
         ! Allocate vectors with desired lengths
-        allocate(ice%up%zeta(nz))
-        allocate(ice%up%zeta_ac(nz_ac))
-        allocate(ice%up%dzeta_a(nz))
-        allocate(ice%up%dzeta_b(nz))
+        allocate(ice%vec%zeta(nz))
+        allocate(ice%vec%zeta_ac(nz_ac))
+        allocate(ice%vec%dzeta_a(nz))
+        allocate(ice%vec%dzeta_b(nz))
         
-        allocate(ice%up%T_ice(nz))
-        allocate(ice%up%T_pmp(nz))
-        allocate(ice%up%cp(nz))
-        allocate(ice%up%kt(nz))
-        allocate(ice%up%uz(nz))
-        allocate(ice%up%advecxy(nz))
-        allocate(ice%up%Q_strn(nz))
+        allocate(ice%vec%T_ice(nz))
+        allocate(ice%vec%T_pmp(nz))
+        allocate(ice%vec%cp(nz))
+        allocate(ice%vec%kt(nz))
+        allocate(ice%vec%uz(nz))
+        allocate(ice%vec%advecxy(nz))
+        allocate(ice%vec%Q_strn(nz))
 
         ! Initialize zeta 
-        ice%up%zeta = 0.0  
+        ice%vec%zeta = 0.0  
         do k = 1, nz 
-            ice%up%zeta(k) = real(k-1,prec) / real(nz-1,prec)
-            !write(*,*) ice%up%zeta(k)
+            ice%vec%zeta(k) = real(k-1,prec) / real(nz-1,prec)
+            !write(*,*) ice%vec%zeta(k)
         end do 
 
         ! Nonlinear zeta (smaller dz increments at the base):
-        ice%up%zeta = ice%up%zeta**2.0
+        ice%vec%zeta = ice%vec%zeta**2.0
         
         ! Calculate zeta_ac (zeta on ac-nodes)
-        ice%up%zeta_ac = calc_zeta_ac(ice%up%zeta)
+        ice%vec%zeta_ac = calc_zeta_ac(ice%vec%zeta)
 
         ! Define thermodynamic zeta helper derivative variables dzeta_a/dzeta_b
-        call calc_dzeta_terms(ice%up%dzeta_a,ice%up%dzeta_b,ice%up%zeta,ice%up%zeta_ac)
+        call calc_dzeta_terms(ice%vec%dzeta_a,ice%vec%dzeta_b,ice%vec%zeta,ice%vec%zeta_ac)
 
         ! Initialize remaining vectors to zero 
-        ice%up%T_ice   = 0.0 
-        ice%up%T_pmp   = 0.0 
-        ice%up%cp      = 0.0
-        ice%up%kt      = 0.0
-        ice%up%uz      = 0.0
-        ice%up%advecxy = 0.0  
-        ice%up%Q_strn  = 0.0
+        ice%vec%T_ice   = 0.0 
+        ice%vec%T_pmp   = 0.0 
+        ice%vec%cp      = 0.0
+        ice%vec%kt      = 0.0
+        ice%vec%uz      = 0.0
+        ice%vec%advecxy = 0.0  
+        ice%vec%Q_strn  = 0.0
 
         write(*,*) "Allocated icesheet variables."
 
