@@ -48,6 +48,7 @@ module defs
     real(prec), parameter :: rho_sw   = 1028.0       ! [kg m-3] Density seawater      
     real(prec), parameter :: rho_a    = 3300.0       ! [kg m-3] Density asthenosphere
     real(prec), parameter :: rho_m    = 2000.0       ! [kg m-3] Density mantle (lithosphere)
+    real(prec), parameter :: L_ice    = 333500.0     ! [J kg-1] Latent heat
 
     public   ! All defs are public
 
