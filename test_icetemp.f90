@@ -77,7 +77,18 @@ program test_icetemp
     ! Prescribe initial eismint conditions for testing 
     call init_eismint_summit(ice1)
 
-    ! Initialize output file and write intial conditions 
+    ! Calculate the robin solution for comparison 
+    robin = ice1  
+    robin%vec%T_ice = calc_temp_robin_column(robin%vec%zeta,robin%vec%T_pmp,robin%vec%kt,robin%vec%cp,rho_ice, &
+                                       robin%H_ice,robin%T_srf,robin%smb,robin%Q_geo,robin%is_float)
+
+    ! Write Robin solution 
+    file1D = "robin.nc"
+    call write_init(robin,filename=file1D,zeta=robin%vec%zeta,time_init=time)
+    call write_step(robin,robin%vec,filename=file1D,time=time)
+
+    ! Initialize output file for model and write intial conditions 
+    file1D = "test.nc"
     call write_init(ice1,filename=file1D,zeta=ice1%vec%zeta,time_init=time)
     call write_step(ice1,ice1%vec,filename=file1D,time=time)
 
@@ -93,33 +104,14 @@ program test_icetemp
                                 ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b,dt)
 
         if (mod(time,dt_out)==0) then 
-            call write_step(ice1,ice1%vec,filename=file1D,time=time)
+            call write_step(ice1,ice1%vec,filename=file1D,time=time,T_robin=robin%vec%T_ice)
         end if 
 
         if (mod(time,50.0)==0) then
             write(*,"(a,f14.4)") "time = ", time
         end if 
 
-    end do 
-
-    ! Also calculate the robin solution for comparison 
-    robin = ice1  
-    robin%vec%T_ice = calc_temp_robin_column(robin%vec%zeta,robin%vec%T_pmp,robin%vec%kt,robin%vec%cp,rho_ice, &
-                                       robin%H_ice,robin%T_srf,robin%smb,robin%Q_geo,robin%is_float)
-
-    ! Write Robin solution for comparison 
-    file1D = "robin.nc"
-    call write_init(robin,filename=file1D,zeta=robin%vec%zeta,time_init=time)
-    call write_step(robin,robin%vec,filename=file1D,time=time)
-
-    ! Compare our solution with robin and write comparison results 
-    diff = robin 
-    diff%vec%T_ice    = ice1%vec%T_ice - robin%vec%T_ice  
-
-    file1D = "diff.nc"
-    call write_init(diff,filename=file1D,zeta=diff%vec%zeta,time_init=time)
-    call write_step(diff,diff%vec,filename=file1D,time=time)
-
+    end do
 
     write(*,*)
     write(*,*) "========================="
@@ -283,14 +275,15 @@ contains
 
     end subroutine write_init 
     
-    subroutine write_step(ice,vecs,filename,time)
+    subroutine write_step(ice,vecs,filename,time,T_robin)
 
         implicit none 
         
         type(icesheet),         intent(IN) :: ice
         type(icesheet_vectors), intent(IN) :: vecs
-        character(len=*), intent(IN) :: filename
-        real(prec),       intent(IN) :: time
+        character(len=*),       intent(IN) :: filename
+        real(prec),             intent(IN) :: time
+        real(prec), optional,   intent(IN) :: T_robin(:) 
 
         ! Local variables
         integer    :: ncid, n
@@ -309,9 +302,9 @@ contains
         call nc_write(filename,"time",time,dim1="time",start=[n],count=[1],ncid=ncid)
 
         ! Update variables (vectors) 
-        call nc_write(filename,"T_ice",  vecs%T_ice,  units="degC",   long_name="Ice temperature",           dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
-        call nc_write(filename,"T_pmp",  vecs%T_pmp,  units="",       long_name="Ice pressure melting point",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
-        call nc_write(filename,"T_prime",vecs%T_ice-vecs%T_pmp,units="degC",long_name="Ice temperature",     dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"T_ice",  vecs%T_ice,  units="K",   long_name="Ice temperature",           dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"T_pmp",  vecs%T_pmp,  units="",    long_name="Ice pressure melting point",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"T_prime",vecs%T_ice-vecs%T_pmp,units="K",long_name="Ice temperature",     dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
         
         call nc_write(filename,"cp",     vecs%cp,     units="J kg-1 K-1",   long_name="Ice heat capacity",       dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
         call nc_write(filename,"kt",     vecs%kt,     units="J a-1 m-1 K-1",long_name="Ice thermal conductivity",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
@@ -322,11 +315,18 @@ contains
         ! Update variables (points) 
         call nc_write(filename,"Q_b",     ice%Q_b,units="",long_name="Basal heating",dim1="time",start=[n],ncid=ncid)
         call nc_write(filename,"Q_geo",   ice%Q_geo,units="mW m**-2",long_name="Geothermal heat flux",dim1="time",start=[n],ncid=ncid)
-        call nc_write(filename,"T_srf",   ice%T_srf,units="degC",long_name="Surface temperature",dim1="time",start=[n],ncid=ncid)
+        call nc_write(filename,"T_srf",   ice%T_srf,units="K",long_name="Surface temperature",dim1="time",start=[n],ncid=ncid)
         call nc_write(filename,"H_ice",   ice%H_ice,units="m",long_name="Ice thickness",dim1="time",start=[n],ncid=ncid)
         call nc_write(filename,"H_w",     ice%H_w,units="m",long_name="Basal water thickness",dim1="time",start=[n],ncid=ncid)
         call nc_write(filename,"is_float",ice%is_float,units="",long_name="Floating flag",dim1="time",start=[n],ncid=ncid)
         
+        ! If available, compare with Robin analytical solution 
+        if (present(T_robin)) then 
+            call nc_write(filename,"T_diff",  vecs%T_ice-T_robin,  units="K", &
+                            long_name="Ice temperature difference with Robin solution", &
+                            dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        end if 
+
         ! Close the netcdf file
         call nc_close(ncid)
 
