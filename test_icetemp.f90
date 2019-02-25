@@ -55,11 +55,11 @@ program test_icetemp
     ! User options 
 
     t_start = 0.0       ! [yr]
-    t_end   = 200e3     ! [yr]
+    t_end   = 300e3     ! [yr]
     dt      = 5.0       ! [yr]
 
     file1D  = "test.nc" 
-    dt_out  = 10000.0      ! [yr] 
+    dt_out  = 2000.0      ! [yr] 
 
     nz      = 21           ! [--] Number of ice sheet points 
 
@@ -75,7 +75,9 @@ program test_icetemp
     nzt = nz - 1 
 
     ! Prescribe initial eismint conditions for testing 
-    call init_eismint_summit(ice1)
+    !call init_eismint_summit(ice1)
+
+    call init_k15_expa(ice1)
 
     ! Calculate the robin solution for comparison 
     robin = ice1  
@@ -92,16 +94,25 @@ program test_icetemp
     call write_init(ice1,filename=file1D,zeta=ice1%vec%zeta,time_init=time)
     call write_step(ice1,ice1%vec,filename=file1D,time=time)
 
+    ! Ensure zero basal water thickness to start 
+    ice1%H_w = 0.0 
+
     ! Loop over time steps and perform thermodynamic calculations
     do n = 1, ntot 
 
         ! Get current time 
         time = t_start + n*dt 
 
+        if (time .ge. 100e3) ice1%T_srf = T0 - 5.0 
+        if (time .ge. 150e3) ice1%T_srf = T0 - 30.0 
+
         call calc_temp_column(ice1%vec%T_ice,ice1%bmb,ice1%dTdz_b,ice1%vec%T_pmp,ice1%vec%cp,ice1%vec%kt, &
                                 ice1%vec%uz,ice1%vec%Q_strn,ice1%vec%advecxy,ice1%Q_b,ice1%Q_geo, &
                                 ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%is_float,ice1%vec%zeta, &
                                 ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b,dt)
+
+        ! Update basal water thickness 
+        ice1%H_w = ice1%H_w - ice1%bmb*dt 
 
         if (mod(time,dt_out)==0) then 
             call write_step(ice1,ice1%vec,filename=file1D,time=time,T_robin=robin%vec%T_ice)
@@ -183,6 +194,64 @@ contains
 
     end subroutine init_eismint_summit 
 
+    subroutine init_k15_expa(ice)
+
+        implicit none 
+
+        type(icesheet), intent(INOUT) :: ice
+
+        ! Local variables 
+        integer :: k, nz, nz_ac  
+
+        nz    = size(ice%vec%zeta)
+        nz_ac = size(ice%vec%zeta_ac) 
+
+        ! Assign point values
+        ice%T_srf    = T0 - 30.0   ! [K]
+        ice%smb      = 0.0         ! [m/a]
+        ice%bmb      = 0.0         ! [m/a]
+        ice%Q_geo    = 42.0        ! [mW/m2]
+        ice%H_ice    = 1000.0      ! [m] Summit thickness
+        ice%H_w      = 0.0         ! [m] No basal water
+        ice%Q_b      = 0.0         ! [] No basal frictional heating 
+        ice%is_float = .FALSE.     ! Grounded point 
+
+        ! EISMINT1
+        ice%vec%cp      = 2009.0    ! [J kg-1 K-1]
+        ice%vec%kt      = 6.67e7    ! [J a-1 m-1 K-1]
+        
+        ice%vec%Q_strn  = 0.0       ! [] No internal strain heating 
+        ice%vec%advecxy = 0.0       ! [] No horizontal advection 
+
+        ! Calculate pressure melting point 
+        ice%vec%T_pmp = calc_T_pmp(ice%H_ice,ice%vec%zeta,T0) 
+
+        if (is_celcius) then 
+            ice%T_srf    = ice%T_srf      - T0
+            ice%vec%T_pmp = ice%vec%T_pmp - T0 
+        end if 
+
+        ! Define initial temperature profile
+        ! (constant equal to surface temp)
+        ice%vec%T_ice = ice%T_srf 
+        where(ice%vec%T_ice .gt. T0) ice%vec%T_ice = T0 
+
+        ! Intermediate layers are linearly interpolated 
+        do k = 2, nz-1 
+            ice%vec%T_ice(k) = ice%vec%T_ice(1)+ice%vec%zeta(k)*(ice%vec%T_ice(nz)-ice%vec%T_ice(1))
+        end do 
+
+        ! Define linear vertical velocity profile
+        ice%vec%uz(nz) = -ice%smb 
+        ice%vec%uz(1)  = 0.0 
+        do k = 2, nz-1 
+            ice%vec%uz(k) = ice%vec%uz(1)+(ice%vec%zeta(k))*(ice%vec%uz(nz)-ice%vec%uz(1))
+        end do 
+        
+        return 
+
+    end subroutine init_k15_expa 
+    
     subroutine icesheet_allocate(ice,nz)
         ! Allocate the ice sheet object 
 
@@ -313,6 +382,7 @@ contains
         call nc_write(filename,"Q_strn", vecs%Q_strn, units="",       long_name="Ice strain heating",      dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
         
         ! Update variables (points) 
+        call nc_write(filename,"bmb",     ice%bmb,units="m a**-1",long_name="Basal mass balance",dim1="time",start=[n],ncid=ncid)
         call nc_write(filename,"Q_b",     ice%Q_b,units="",long_name="Basal heating",dim1="time",start=[n],ncid=ncid)
         call nc_write(filename,"Q_geo",   ice%Q_geo,units="mW m**-2",long_name="Geothermal heat flux",dim1="time",start=[n],ncid=ncid)
         call nc_write(filename,"T_srf",   ice%T_srf,units="K",long_name="Surface temperature",dim1="time",start=[n],ncid=ncid)
