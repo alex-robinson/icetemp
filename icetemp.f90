@@ -167,6 +167,7 @@ contains
         real(prec), allocatable :: rhs(:)      ! nz_aa 
         real(prec), allocatable :: solution(:) ! nz_aa
         real(prec) :: dzetaBot, fac, fac_a, fac_b, uz_aa, dz  
+        real(prec) :: dz_a, dz_b 
 
         nz_aa = size(zeta_aa,1)
         nz_ac = size(zeta_ac,1)
@@ -248,14 +249,14 @@ contains
                 uz_aa   = 0.5*(uz(k-1)+uz(k))   ! ac => aa nodes
             end if 
 
-            dz      =  H_ice*(zeta_ac(k)-zeta_ac(k-1))
+            ! Vertical distance for centered difference scheme
+            dz      =  H_ice*(zeta_aa(k+1)-zeta_aa(k-1))
             
-
             fac     = dt * ct(k) / (rho_ice*cp(k)) / H_ice**2
             fac_a   = -fac*dzeta_a(k)
             fac_b   = -fac*dzeta_b(k)
-            subd(k) = fac_a - uz_aa*dt / (2.0*dz)
-            supd(k) = fac_b + uz_aa*dt / (2.0*dz)
+            subd(k) = fac_a - uz_aa*dt / dz
+            supd(k) = fac_b + uz_aa*dt / dz
             diag(k) = 1.0_prec - fac_a - fac_b
             rhs(k)  = T_ice(k) + dt*Q_strn(k) - dt*advecxy(k) 
 

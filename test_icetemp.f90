@@ -55,13 +55,13 @@ program test_icetemp
     ! User options 
 
     t_start = 0.0       ! [yr]
-    t_end   = 300e3     ! [yr]
+    t_end   = 200e3     ! [yr]
     dt      = 5.0       ! [yr]
 
     file1D  = "test.nc" 
     dt_out  = 2000.0      ! [yr] 
 
-    nz      = 21           ! [--] Number of ice sheet points 
+    nz      = 11           ! [--] Number of ice sheet points 
 
     is_celcius = .FALSE. 
     ! ===============================================================
@@ -71,13 +71,12 @@ program test_icetemp
     ntot = (t_end-t_start)/dt 
     
     ! Initialize icesheet object 
-    call icesheet_allocate(ice1,nz=nz)
+    call icesheet_allocate(ice1,nz=nz,zeta_scale="exp")
     nzt = nz - 1 
 
     ! Prescribe initial eismint conditions for testing 
-    !call init_eismint_summit(ice1)
-
-    call init_k15_expa(ice1)
+    call init_eismint_summit(ice1)
+    !call init_k15_expa(ice1)
 
     ! Calculate the robin solution for comparison 
     robin = ice1  
@@ -103,8 +102,8 @@ program test_icetemp
         ! Get current time 
         time = t_start + n*dt 
 
-        if (time .ge. 100e3) ice1%T_srf = T0 - 5.0 
-        if (time .ge. 150e3) ice1%T_srf = T0 - 30.0 
+        !if (time .ge. 100e3) ice1%T_srf = T0 - 5.0 
+        !if (time .ge. 150e3) ice1%T_srf = T0 - 30.0 
 
         call calc_temp_column(ice1%vec%T_ice,ice1%bmb,ice1%dTdz_b,ice1%vec%T_pmp,ice1%vec%cp,ice1%vec%kt, &
                                 ice1%vec%uz,ice1%vec%Q_strn,ice1%vec%advecxy,ice1%Q_b,ice1%Q_geo, &
@@ -252,13 +251,14 @@ contains
 
     end subroutine init_k15_expa 
     
-    subroutine icesheet_allocate(ice,nz)
+    subroutine icesheet_allocate(ice,nz,zeta_scale)
         ! Allocate the ice sheet object 
 
         implicit none 
 
         type(icesheet), intent(INOUT) :: ice 
         integer,        intent(IN)    :: nz     ! Number of ice points (aa-nodes)
+        character(*),   intent(IN)    :: zeta_scale
 
         ! Local variables 
         integer :: k, nz_ac 
@@ -302,9 +302,26 @@ contains
             !write(*,*) ice%vec%zeta(k)
         end do 
 
-        ! Nonlinear zeta (smaller dz increments at the base):
-        ice%vec%zeta = ice%vec%zeta**2.0
+        ! Scale zeta to produce different resolution through column if desired
+        ! zeta_scale = ["linear","exp","wave"]
+        select case(trim(zeta_scale))
+            
+            case("exp")
+                ! Increase resolution at the base 
+                ice%vec%zeta = ice%vec%zeta**2.0
+
+            case("tanh")
+                ! Increase resolution at base and surface 
+
+                ice%vec%zeta = tanh(1.5*pi*(ice%vec%zeta-0.65))
+                ice%vec%zeta = ice%vec%zeta - minval(ice%vec%zeta)
+                ice%vec%zeta = ice%vec%zeta / maxval(ice%vec%zeta)
+
+            case DEFAULT
+            ! Do nothing, scale should be linear as defined above
         
+        end select  
+
         ! Calculate zeta_ac (zeta on ac-nodes)
         ice%vec%zeta_ac = calc_zeta_ac(ice%vec%zeta)
 
