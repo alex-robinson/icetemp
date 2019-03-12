@@ -261,7 +261,7 @@ contains
 
             else
                 ! With implicit vertical advection (diffusion + advection)
-                uz_aa   = 0.5*(uz(k-1)+uz(k)) + dkappadz(k)  ! ac => aa nodes
+                uz_aa   = 0.5*(uz(k-1)+uz(k)) !+ dkappadz(k)  ! ac => aa nodes
 
                 ! If near the base, use the last ac-node vertical velocity to reduce bias
                 if (k .eq. 2) uz_aa = uz(k) 
