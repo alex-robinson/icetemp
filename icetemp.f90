@@ -267,16 +267,9 @@ contains
                 if (k .eq. 2) uz_aa = uz(k) 
             end if 
 
-            if (k .eq. 2) then 
-                ! Bottom layer, kappa is kappa for now 
-                ! since zeta_ac(k-1)==zeta_aa(k-1)==0.0
-                kappa_a = kappa_aa(1)
-            else 
-                dz1 = zeta_ac(k-1)-zeta_aa(k-1)
-                dz2 = zeta_aa(k)-zeta_ac(k-1)
-                kappa_a = (dz1*kappa_aa(k-1) + dz2*kappa_aa(k))/(dz1+dz2)
-            end if 
-
+            ! Convert units of Q_strn [J a-1 m-3] => [K a-1]
+            Q_strn_now = Q_strn(k)/(rho_ice*cp(k))
+            
         if (.FALSE.) then 
             ! Stagger kappa to the lower and upper ac-nodes
 
@@ -314,7 +307,7 @@ contains
             subd(k) = fac_a - uz_aa * dt/dz
             supd(k) = fac_b + uz_aa * dt/dz
             diag(k) = 1.0_prec - fac_a - fac_b
-            rhs(k)  = T_ice(k) + dt*Q_strn(k) - dt*advecxy(k) 
+            rhs(k)  = T_ice(k) + dt*Q_strn_now - dt*advecxy(k) 
 
         end do 
 
