@@ -61,7 +61,7 @@ program test_icetemp
     file1D  = "test.nc" 
     dt_out  = 2000.0      ! [yr] 
 
-    nz      = 11           ! [--] Number of ice sheet points 
+    nz      = 81           ! [--] Number of ice sheet points 
 
     is_celcius = .FALSE. 
     ! ===============================================================
@@ -71,7 +71,7 @@ program test_icetemp
     ntot = (t_end-t_start)/dt 
     
     ! Initialize icesheet object 
-    call icesheet_allocate(ice1,nz=nz,zeta_scale="exp")
+    call icesheet_allocate(ice1,nz=nz,zeta_scale="linear")
     nzt = nz - 1 
 
     ! Prescribe initial eismint conditions for testing 

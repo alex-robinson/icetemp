@@ -161,17 +161,23 @@ contains
         real(prec), allocatable :: advecz(:)   ! nz_aa, for explicit vertical advection solving
         logical, parameter      :: test_expl_advecz = .FALSE. 
 
+        real(prec), allocatable :: kappa_aa(:)
+        real(prec), allocatable :: dkappadz(:)
+
         real(prec), allocatable :: subd(:)     ! nz_aa 
         real(prec), allocatable :: diag(:)     ! nz_aa  
         real(prec), allocatable :: supd(:)     ! nz_aa 
         real(prec), allocatable :: rhs(:)      ! nz_aa 
         real(prec), allocatable :: solution(:) ! nz_aa
-        real(prec) :: dzetaBot, fac, fac_a, fac_b, uz_aa, dz  
-        real(prec) :: dz_a, dz_b 
+        real(prec) :: fac_a, fac_b, uz_aa, dzeta, dz, dz1, dz2  
+        real(prec) :: kappa_a, kappa_b
 
         nz_aa = size(zeta_aa,1)
         nz_ac = size(zeta_ac,1)
 
+        allocate(kappa_aa(nz_aa))
+        allocate(dkappadz(nz_aa))
+        
         allocate(subd(nz_aa))
         allocate(diag(nz_aa))
         allocate(supd(nz_aa))
@@ -180,6 +186,15 @@ contains
 
         ! Get geothermal heat flux in proper units 
         Q_geo_now = Q_geo*1e-3*sec_year   ! [mW m-2] => [J m-2 a-1]
+
+        ! Calculate diffusivity on cell centers (aa-nodes)
+        kappa_aa = ct / (rho_ice*cp)
+        
+        ! Calculate gradient in kappa (centered on aa-nodes)
+        dkappadz = 0.0 
+        do k = 2, nz_aa-1 
+            dkappadz(k) = (kappa_aa(k+1)-kappa_aa(k-1))/(zeta_aa(k+1)-zeta_aa(k-1))
+        end do 
 
         ! Step 1: apply vertical advection (for explicit testing)
         if (test_expl_advecz) then 
@@ -216,13 +231,13 @@ contains
                 ! Note: basalHeatFlux is generally >= 0, since defined as positive up
 
                 ! calculate dzeta for the bottom layer between the basal boundary and the temperature point above
-                dzetaBot = zeta_aa(2) - zeta_aa(1) 
+                dzeta = zeta_aa(2) - zeta_aa(1)
 
                 ! backward Euler flux basal boundary condition
                 subd(1) =  0.0_prec
                 diag(1) =  1.0_prec
                 supd(1) = -1.0_prec
-                rhs(1)  = (Q_b + Q_geo_now) * dzetaBot*H_ice / ct(1)
+                rhs(1)  = (Q_b + Q_geo_now)/ct(1) * (dzeta*H_ice)
 
             else 
                 ! Temperate at bed 
@@ -246,17 +261,58 @@ contains
 
             else
                 ! With implicit vertical advection (diffusion + advection)
-                uz_aa   = 0.5*(uz(k-1)+uz(k))   ! ac => aa nodes
+                uz_aa   = 0.5*(uz(k-1)+uz(k)) + dkappadz(k)  ! ac => aa nodes
+
+                ! If near the base, use the last ac-node vertical velocity to reduce bias
+                if (k .eq. 2) uz_aa = uz(k) 
             end if 
+
+            if (k .eq. 2) then 
+                ! Bottom layer, kappa is kappa for now 
+                ! since zeta_ac(k-1)==zeta_aa(k-1)==0.0
+                kappa_a = kappa_aa(1)
+            else 
+                dz1 = zeta_ac(k-1)-zeta_aa(k-1)
+                dz2 = zeta_aa(k)-zeta_ac(k-1)
+                kappa_a = (dz1*kappa_aa(k-1) + dz2*kappa_aa(k))/(dz1+dz2)
+            end if 
+
+        if (.FALSE.) then 
+            ! Stagger kappa to the lower and upper ac-nodes
+
+            ! ac-node between k-1 and k 
+            if (k .eq. 2) then 
+                ! Bottom layer, kappa is kappa for now (later with bedrock kappa?)
+                kappa_a = kappa_aa(1)
+            else 
+                ! Weighted average between lower half and upper half of point k-1 to k 
+                dz1 = zeta_ac(k-1)-zeta_aa(k-1)
+                dz2 = zeta_aa(k)-zeta_ac(k-1)
+                kappa_a = (dz1*kappa_aa(k-1) + dz2*kappa_aa(k))/(dz1+dz2)
+            end if 
+
+            ! ac-node between k and k+1 
+
+            ! Weighted average between lower half and upper half of point k to k+1
+            dz1 = zeta_ac(k+1)-zeta_aa(k)
+            dz2 = zeta_aa(k+1)-zeta_ac(k+1)
+            kappa_b = (dz1*kappa_aa(k) + dz2*kappa_aa(k+1))/(dz1+dz2)
+
+        else 
+            ! ajr: simply use aa-node kappas for now
+            kappa_a = kappa_aa(k) 
+            kappa_b = kappa_a
+             
+        end if 
 
             ! Vertical distance for centered difference scheme
             dz      =  H_ice*(zeta_aa(k+1)-zeta_aa(k-1))
-            
-            fac     = dt * ct(k) / (rho_ice*cp(k)) / H_ice**2
-            fac_a   = -fac*dzeta_a(k)
-            fac_b   = -fac*dzeta_b(k)
-            subd(k) = fac_a - uz_aa*dt / dz
-            supd(k) = fac_b + uz_aa*dt / dz
+
+            fac_a   = -kappa_a*dzeta_a(k)*dt/H_ice**2
+            fac_b   = -kappa_b*dzeta_b(k)*dt/H_ice**2
+
+            subd(k) = fac_a - uz_aa * dt/dz
+            supd(k) = fac_b + uz_aa * dt/dz
             diag(k) = 1.0_prec - fac_a - fac_b
             rhs(k)  = T_ice(k) + dt*Q_strn(k) - dt*advecxy(k) 
 
