@@ -5,6 +5,7 @@ program test_icetemp
     use defs
     use thermodynamics 
     use icetemp 
+    use iceage 
 
     implicit none 
 
@@ -17,24 +18,26 @@ program test_icetemp
         real(prec), allocatable :: T_pmp(:)   ! [K] Ice pressure melting point 
         real(prec), allocatable :: cp(:)      ! [] Ice heat capacity 
         real(prec), allocatable :: kt(:)      ! [] Ice conductivity  
-        real(prec), allocatable :: uz(:)      ! [] Vertical velocity 
+        real(prec), allocatable :: uz(:)      ! [m a-1] Vertical velocity 
         real(prec), allocatable :: advecxy(:) ! [] Horizontal heat advection magnitude
-        real(prec), allocatable :: Q_strn(:)  ! [] Strain heating 
-        
+        real(prec), allocatable :: Q_strn(:)  ! [K a-1] Strain heating 
+        real(prec), allocatable :: t_dep(:)   ! [a] Deposition time 
+
     end type 
 
     type icesheet 
-        real(prec) :: H_ice     ! [m] Ice thickness 
-        real(prec) :: H_w       ! [m] Water present at the ice base 
-        real(prec) :: T_srf     ! [K] Ice surface temperature 
-        real(prec) :: smb       ! [m a**-1] Surface mass balance
-        real(prec) :: bmb       ! [m a**-1] Basal mass balance
-        real(prec) :: dTdz_b    ! [K m-1] Basal vertical temperature gradient 
-        real(prec) :: Q_geo     ! [mW m-2] Geothermal heat flux 
-        real(prec) :: Q_b       ! [] Basal heat production 
-        logical    :: is_float  ! [-] Floating flag 
-        
-        type(icesheet_vectors) :: vec     ! For height coordinate systems with k=1 base and k=nz surface
+        real(prec) :: H_ice             ! [m] Ice thickness 
+        real(prec) :: H_w               ! [m] Water present at the ice base 
+        real(prec) :: T_srf             ! [K] Ice surface temperature 
+        real(prec) :: smb               ! [m a**-1] Surface mass balance
+        real(prec) :: bmb               ! [m a**-1] Basal mass balance
+        real(prec) :: dTdz_b            ! [K m-1] Basal vertical temperature gradient 
+        real(prec) :: Q_geo             ! [mW m-2] Geothermal heat flux 
+        real(prec) :: Q_b               ! [] Basal heat production 
+        logical    :: is_float          ! [-] Floating flag 
+        character(len=56) :: age_method ! Method to use for age calculation 
+        real(prec) :: age_impl_kappa    ! [m2 a-1] Artificial diffusion term for implicit age solving 
+        type(icesheet_vectors) :: vec   ! For height coordinate systems with k=1 base and k=nz surface
 
     end type 
 
@@ -50,20 +53,27 @@ program test_icetemp
     real(prec)         :: dt_out 
     integer            :: nz, nzt
     logical            :: is_celcius 
+    character(len=56)  :: age_method 
+    real(prec)         :: age_impl_kappa
+    real(prec)         :: t_base
 
     ! ===============================================================
     ! User options 
 
     t_start = 0.0       ! [yr]
-    t_end   = 200e3     ! [yr]
+    t_end   = 500e3     ! [yr]
     dt      = 5.0       ! [yr]
 
     file1D  = "test.nc" 
-    dt_out  = 2000.0      ! [yr] 
+    dt_out  = 5000.0      ! [yr] 
 
-    nz      = 81           ! [--] Number of ice sheet points 
+    nz      = 31           ! [--] Number of ice sheet points 
 
     is_celcius = .FALSE. 
+
+    age_method     = "impl"     ! "expl" or "impl"
+    age_impl_kappa = 1.5        ! [m2 a-1] Artificial diffusion for age tracing
+
     ! ===============================================================
 
     ! Initialize time and calculate number of time steps to iterate and 
@@ -71,12 +81,16 @@ program test_icetemp
     ntot = (t_end-t_start)/dt 
     
     ! Initialize icesheet object 
-    call icesheet_allocate(ice1,nz=nz,zeta_scale="linear")
+    call icesheet_allocate(ice1,nz=nz,zeta_scale="tanh")
     nzt = nz - 1 
 
     ! Prescribe initial eismint conditions for testing 
     call init_eismint_summit(ice1)
     !call init_k15_expa(ice1)
+
+    ! Set age method and kappa 
+    ice1%age_method     = age_method 
+    ice1%age_impl_kappa = age_impl_kappa
 
     ! Calculate the robin solution for comparison 
     robin = ice1  
@@ -113,6 +127,12 @@ program test_icetemp
         ! Update basal water thickness 
         ice1%H_w = ice1%H_w - ice1%bmb*dt 
 
+        ! Age calculations 
+        t_base = ice1%vec%t_dep(1) 
+        call calc_tracer_column(ice1%vec%t_dep,ice1%vec%uz,ice1%vec%advecxy*0.0,time,ice1%bmb, &
+                                ice1%H_ice,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b, &
+                                ice1%age_impl_kappa,dt)
+
         if (mod(time,dt_out)==0) then 
             call write_step(ice1,ice1%vec,filename=file1D,time=time,T_robin=robin%vec%T_ice)
         end if 
@@ -141,14 +161,13 @@ contains
         type(icesheet), intent(INOUT) :: ice
 
         ! Local variables 
-        integer :: k, nz, nz_ac  
+        integer :: k, nz  
 
         nz    = size(ice%vec%zeta)
-        nz_ac = size(ice%vec%zeta_ac) 
 
         ! Assign point values
         ice%T_srf    = 239.0       ! [K] 
-        ice%smb      = 0.5         ! [m/a]
+        ice%smb      = 0.1         ! [m/a]
         ice%bmb      = 0.0         ! [m/a]
         ice%Q_geo    = 42.0        ! [mW/m2]
         ice%H_ice    = 2997.0      ! [m] Summit thickness
@@ -200,10 +219,9 @@ contains
         type(icesheet), intent(INOUT) :: ice
 
         ! Local variables 
-        integer :: k, nz, nz_ac  
+        integer :: k, nz 
 
         nz    = size(ice%vec%zeta)
-        nz_ac = size(ice%vec%zeta_ac) 
 
         ! Assign point values
         ice%T_srf    = T0 - 30.0   ! [K]
@@ -263,7 +281,7 @@ contains
         ! Local variables 
         integer :: k, nz_ac 
 
-        nz_ac = nz+1 
+        nz_ac = nz-1 
 
         ! First allocate 'up' variables (with vertical coordinate as height)
 
@@ -281,6 +299,8 @@ contains
         if (allocated(ice%vec%advecxy)) deallocate(ice%vec%advecxy)
         if (allocated(ice%vec%Q_strn))  deallocate(ice%vec%Q_strn)
 
+        if (allocated(ice%vec%t_dep))   deallocate(ice%vec%t_dep)
+
         ! Allocate vectors with desired lengths
         allocate(ice%vec%zeta(nz))
         allocate(ice%vec%zeta_ac(nz_ac))
@@ -294,6 +314,8 @@ contains
         allocate(ice%vec%uz(nz))
         allocate(ice%vec%advecxy(nz))
         allocate(ice%vec%Q_strn(nz))
+
+        allocate(ice%vec%t_dep(nz))
 
         ! Initialize zeta 
         ice%vec%zeta = 0.0  
@@ -337,6 +359,8 @@ contains
         ice%vec%advecxy = 0.0  
         ice%vec%Q_strn  = 0.0
 
+        ice%vec%t_dep   = 0.0 
+
         write(*,*) "Allocated icesheet variables."
 
         return 
@@ -354,7 +378,7 @@ contains
 
         ! Initialize netcdf file and dimensions
         call nc_create(filename)
-        call nc_write_dim(filename,"zeta",    x=zeta,    units="1")
+        call nc_write_dim(filename,"zeta",  x=zeta,    units="1")
         call nc_write_dim(filename,"time",  x=time_init,dx=1.0_prec,nx=1,units="years",unlimited=.TRUE.)
 
         return
@@ -398,7 +422,10 @@ contains
         call nc_write(filename,"advecxy",vecs%advecxy,units="",         long_name="Ice horizontal advection",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
         call nc_write(filename,"Q_strn", vecs%Q_strn, units="J a-1 m-3",long_name="Ice strain heating",      dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
         
+        call nc_write(filename,"t_dep", vecs%t_dep, units="a",long_name="Deposition time",      dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        
         ! Update variables (points) 
+        call nc_write(filename,"smb",     ice%smb,units="m a**-1",long_name="Surface mass balance",dim1="time",start=[n],ncid=ncid)
         call nc_write(filename,"bmb",     ice%bmb,units="m a**-1",long_name="Basal mass balance",dim1="time",start=[n],ncid=ncid)
         call nc_write(filename,"Q_b",     ice%Q_b,units="",long_name="Basal heating",dim1="time",start=[n],ncid=ncid)
         call nc_write(filename,"Q_geo",   ice%Q_geo,units="mW m**-2",long_name="Geothermal heat flux",dim1="time",start=[n],ncid=ncid)
@@ -428,13 +455,13 @@ contains
         implicit none 
 
         real(prec), intent(IN)  :: zeta_aa(:) 
-        real(prec) :: zeta_ac(size(zeta_aa)-1)
+        real(prec) :: zeta_ac(size(zeta_aa))
 
         ! Local variables
         integer :: k, nz_aa, nz_ac 
 
         nz_aa  = size(zeta_aa)
-        nz_ac  = nz_aa - 1 
+        nz_ac  = nz_aa-1 
 
         ! Get zeta_ac (edges of zeta layers - between zeta_aa values)
         zeta_ac(1) = 0.0 
@@ -442,6 +469,17 @@ contains
             zeta_ac(k) = 0.5 * (zeta_aa(k)+zeta_aa(k+1))
         end do 
         zeta_ac(nz_ac) = 1.0 
+        
+        if (.FALSE.) then 
+            ! zeta_ac(nz_ac==nz_aa) solution for alternate bottom boundary condition
+
+            ! Get zeta_ac (edges of zeta layers - between zeta_aa values) 
+            do k = 1, nz_ac-1
+                zeta_ac(k) = 0.5 * (zeta_aa(k)+zeta_aa(k+1))
+            end do 
+            zeta_ac(nz_ac) = 1.0 
+
+        end if 
 
         return 
 

@@ -155,6 +155,7 @@ contains
         ! Local variables 
         integer :: k, nz_aa, nz_ac
         real(prec) :: Q_geo_now, ghf_conv 
+        real(prec) :: Q_strn_now
         real(prec) :: H_w_dot
         real(prec) :: melt_internal, T_excess  
 
@@ -169,7 +170,7 @@ contains
         real(prec), allocatable :: supd(:)     ! nz_aa 
         real(prec), allocatable :: rhs(:)      ! nz_aa 
         real(prec), allocatable :: solution(:) ! nz_aa
-        real(prec) :: fac_a, fac_b, uz_aa, dzeta, dz, dz1, dz2  
+        real(prec) :: fac, fac_a, fac_b, uz_aa, dzeta, dz, dz1, dz2  
         real(prec) :: kappa_a, kappa_b
 
         nz_aa = size(zeta_aa,1)
@@ -239,6 +240,16 @@ contains
                 supd(1) = -1.0_prec
                 rhs(1)  = (Q_b + Q_geo_now)/ct(1) * (dzeta*H_ice)
 
+                if (.FALSE.) then 
+                    fac_a    = kappa_aa(1) * dt/H_ice**2 *1.0/(2.0*(zeta_ac(2)-zeta_ac(1))*(zeta_aa(2)-zeta_aa(1)))
+                    fac_b    = kappa_aa(1) * dt/H_ice    *1.0/(2.0*(zeta_ac(2)-zeta_ac(1)))
+                    
+                    subd(1) =  0.0_prec
+                    diag(1) =  1.0_prec + fac_a
+                    supd(1) =  -fac_a
+                    rhs(1)  =  T_ice(1) + fac_b*Q_geo_now/ct(1)
+                end if 
+
             else 
                 ! Temperate at bed 
                 ! Hold basal temperature at pressure melting point
@@ -262,14 +273,12 @@ contains
             else
                 ! With implicit vertical advection (diffusion + advection)
                 uz_aa   = 0.5*(uz(k-1)+uz(k)) !+ dkappadz(k)  ! ac => aa nodes
-
-                ! If near the base, use the last ac-node vertical velocity to reduce bias
-                if (k .eq. 2) uz_aa = uz(k) 
+                
             end if 
 
             ! Convert units of Q_strn [J a-1 m-3] => [K a-1]
             Q_strn_now = Q_strn(k)/(rho_ice*cp(k))
-            
+
         if (.FALSE.) then 
             ! Stagger kappa to the lower and upper ac-nodes
 
@@ -377,13 +386,12 @@ contains
         real(prec), intent(INOUT) :: dzeta_a(:)    ! nz_aa
         real(prec), intent(INOUT) :: dzeta_b(:)    ! nz_aa
         real(prec), intent(IN)    :: zeta_aa(:)    ! nz_aa 
-        real(prec), intent(IN)    :: zeta_ac(:)    ! nz_ac 
+        real(prec), intent(IN)    :: zeta_ac(:)    ! nz_ac == nz_aa-1
 
         ! Local variables 
-        integer :: k, nz_layers, nz_aa, nz_ac    
+        integer :: k, nz_layers, nz_aa    
 
         nz_aa = size(zeta_aa)
-        nz_ac = size(zeta_ac)
 
         ! Note: zeta_aa is calculated outside in the main program 
 
