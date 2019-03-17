@@ -249,7 +249,7 @@ contains
             end if 
 
             dz      =  H_ice*(zeta_ac(k)-zeta_ac(k-1))
-            
+            !dz      =  0.5*H_ice*(zeta_aa(k+1)-zeta_aa(k-1))
 
             fac     = dt * ct(k) / (rho_ice*cp(k)) / H_ice**2
             fac_a   = -fac*dzeta_a(k)

@@ -194,7 +194,7 @@ contains
         ! Local variables 
         integer :: k, nz_ac 
 
-        nz_ac = nz+1 
+        nz_ac = nz-1 
 
         ! First allocate 'up' variables (with vertical coordinate as height)
 
