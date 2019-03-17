@@ -51,7 +51,7 @@ program test_icetemp
     integer            :: n, ntot 
     character(len=512) :: file1D 
     real(prec)         :: dt_out 
-    integer            :: nz, nzt
+    integer            :: nz
     logical            :: is_celcius 
     character(len=56)  :: age_method 
     real(prec)         :: age_impl_kappa
@@ -61,13 +61,13 @@ program test_icetemp
     ! User options 
 
     t_start = 0.0       ! [yr]
-    t_end   = 500e3     ! [yr]
+    t_end   = 200e3     ! [yr]
     dt      = 5.0       ! [yr]
 
     file1D  = "test.nc" 
-    dt_out  = 5000.0      ! [yr] 
+    dt_out  = 10000.0      ! [yr] 
 
-    nz      = 31           ! [--] Number of ice sheet points 
+    nz      = 21           ! [--] Number of ice sheet points 
 
     is_celcius = .FALSE. 
 
@@ -81,8 +81,7 @@ program test_icetemp
     ntot = (t_end-t_start)/dt 
     
     ! Initialize icesheet object 
-    call icesheet_allocate(ice1,nz=nz,zeta_scale="tanh")
-    nzt = nz - 1 
+    call icesheet_allocate(ice1,nz=nz,zeta_scale="exp") 
 
     ! Prescribe initial eismint conditions for testing 
     call init_eismint_summit(ice1)
@@ -161,13 +160,14 @@ contains
         type(icesheet), intent(INOUT) :: ice
 
         ! Local variables 
-        integer :: k, nz  
+        integer :: k, nz, nz_ac   
 
         nz    = size(ice%vec%zeta)
+        nz_ac = nz - 1 
 
         ! Assign point values
         ice%T_srf    = 239.0       ! [K] 
-        ice%smb      = 0.1         ! [m/a]
+        ice%smb      = 0.5         ! [m/a]
         ice%bmb      = 0.0         ! [m/a]
         ice%Q_geo    = 42.0        ! [mW/m2]
         ice%H_ice    = 2997.0      ! [m] Summit thickness
@@ -202,10 +202,10 @@ contains
         end do 
 
         ! Define linear vertical velocity profile
-        ice%vec%uz(nz) = -ice%smb 
+        ice%vec%uz(nz_ac) = -ice%smb 
         ice%vec%uz(1)  = 0.0 
-        do k = 2, nz-1 
-            ice%vec%uz(k) = ice%vec%uz(1)+(ice%vec%zeta(k))*(ice%vec%uz(nz)-ice%vec%uz(1))
+        do k = 2, nz_ac 
+            ice%vec%uz(k) = ice%vec%uz(1)+(ice%vec%zeta_ac(k))*(ice%vec%uz(nz_ac)-ice%vec%uz(1))
         end do 
         
         return 
@@ -311,10 +311,11 @@ contains
         allocate(ice%vec%T_pmp(nz))
         allocate(ice%vec%cp(nz))
         allocate(ice%vec%kt(nz))
-        allocate(ice%vec%uz(nz))
         allocate(ice%vec%advecxy(nz))
         allocate(ice%vec%Q_strn(nz))
 
+        allocate(ice%vec%uz(nz_ac))
+        
         allocate(ice%vec%t_dep(nz))
 
         ! Initialize zeta 
@@ -322,7 +323,7 @@ contains
         do k = 1, nz 
             ice%vec%zeta(k) = real(k-1,prec) / real(nz-1,prec)
             !write(*,*) ice%vec%zeta(k)
-        end do 
+        end do  
 
         ! Scale zeta to produce different resolution through column if desired
         ! zeta_scale = ["linear","exp","wave"]
@@ -347,9 +348,35 @@ contains
         ! Calculate zeta_ac (zeta on ac-nodes)
         ice%vec%zeta_ac = calc_zeta_ac(ice%vec%zeta)
 
+!         ! =======================================================
+!         ice%vec%zeta_ac = 0.0  
+!         do k = 1, nz_ac 
+!             ice%vec%zeta_ac(k) = real(k-1,prec) / real(nz_ac-1,prec)
+!             !write(*,*) ice%vec%zeta(k)
+!         end do  
+
+!         ice%vec%zeta(1) = 0.0 
+!         do k = 2, nz-1
+!             ice%vec%zeta(k) = 0.5 * (ice%vec%zeta_ac(k-1) + ice%vec%zeta_ac(k))
+!         end do 
+!         ice%vec%zeta(nz) = 1.0 
+!         ! =======================================================
+
         ! Define thermodynamic zeta helper derivative variables dzeta_a/dzeta_b
         call calc_dzeta_terms(ice%vec%dzeta_a,ice%vec%dzeta_b,ice%vec%zeta,ice%vec%zeta_ac)
 
+!         do k = 1, nz 
+!             write(*,*) ice%vec%zeta(k), ice%vec%dzeta_a(k), ice%vec%dzeta_b(k) 
+!         end do 
+
+!         write(*,*) "-----"
+
+!         do k = 1, nz-1 
+!             write(*,*) ice%vec%zeta_ac(k)
+!         end do 
+
+!         stop 
+        
         ! Initialize remaining vectors to zero 
         ice%vec%T_ice   = 0.0 
         ice%vec%T_pmp   = 0.0 
