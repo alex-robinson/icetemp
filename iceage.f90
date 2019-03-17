@@ -247,14 +247,15 @@ contains
                 ! With implicit vertical advection (diffusion + advection)
                 uz_aa   = 0.5*(uz(k-1)+uz(k))   ! ac => aa nodes
             end if 
-
-            dz      =  H_ice*(zeta_ac(k)-zeta_ac(k-1))
             
-            fac     = dt * kappa / H_ice**2
-            fac_a   = -fac*dzeta_a(k)
-            fac_b   = -fac*dzeta_b(k)
-            subd(k) = fac_a - uz_aa*dt / (2.0*dz)
-            supd(k) = fac_b + uz_aa*dt / (2.0*dz)
+            ! Vertical distance for centered difference scheme
+            dz      =  H_ice*(zeta_aa(k+1)-zeta_aa(k-1))
+
+            fac_a   = -kappa*dzeta_a(k)*dt/H_ice**2
+            fac_b   = -kappa*dzeta_b(k)*dt/H_ice**2
+
+            subd(k) = fac_a - uz_aa * dt/dz
+            supd(k) = fac_b + uz_aa * dt/dz
             diag(k) = 1.0_prec - fac_a - fac_b
             rhs(k)  = X_ice(k) - dt*advecxy(k) 
 

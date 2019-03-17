@@ -61,13 +61,13 @@ program test_icetemp
     ! User options 
 
     t_start = 0.0       ! [yr]
-    t_end   = 200e3     ! [yr]
+    t_end   = 1000e3     ! [yr]
     dt      = 5.0       ! [yr]
 
     file1D  = "test.nc" 
     dt_out  = 10000.0      ! [yr] 
 
-    nz      = 21           ! [--] Number of ice sheet points 
+    nz      = 31           ! [--] Number of ice sheet points 
 
     is_celcius = .FALSE. 
 
@@ -167,7 +167,7 @@ contains
 
         ! Assign point values
         ice%T_srf    = 239.0       ! [K] 
-        ice%smb      = 0.5         ! [m/a]
+        ice%smb      = 0.1         ! [m/a]
         ice%bmb      = 0.0         ! [m/a]
         ice%Q_geo    = 42.0        ! [mW/m2]
         ice%H_ice    = 2997.0      ! [m] Summit thickness
@@ -319,11 +319,17 @@ contains
         allocate(ice%vec%t_dep(nz))
 
         ! Initialize zeta 
-        ice%vec%zeta = 0.0  
-        do k = 1, nz 
-            ice%vec%zeta(k) = real(k-1,prec) / real(nz-1,prec)
+!         ice%vec%zeta = 0.0  
+!         do k = 1, nz 
+!             ice%vec%zeta(k) = real(k-1,prec) / real(nz-1,prec)
+!             !write(*,*) ice%vec%zeta(k)
+!         end do  
+
+        ice%vec%zeta_ac = 0.0  
+        do k = 1, nz_ac 
+            ice%vec%zeta_ac(k) = real(k-1,prec) / real(nz_ac-1,prec)
             !write(*,*) ice%vec%zeta(k)
-        end do  
+        end do 
 
         ! Scale zeta to produce different resolution through column if desired
         ! zeta_scale = ["linear","exp","wave"]
@@ -331,14 +337,14 @@ contains
             
             case("exp")
                 ! Increase resolution at the base 
-                ice%vec%zeta = ice%vec%zeta**2.0
+                ice%vec%zeta_ac = ice%vec%zeta_ac**2.0
 
             case("tanh")
                 ! Increase resolution at base and surface 
 
-                ice%vec%zeta = tanh(1.5*pi*(ice%vec%zeta-0.65))
-                ice%vec%zeta = ice%vec%zeta - minval(ice%vec%zeta)
-                ice%vec%zeta = ice%vec%zeta / maxval(ice%vec%zeta)
+                ice%vec%zeta_ac = tanh(1.5*pi*(ice%vec%zeta_ac-0.65))
+                ice%vec%zeta_ac = ice%vec%zeta_ac - minval(ice%vec%zeta_ac)
+                ice%vec%zeta_ac = ice%vec%zeta_ac / maxval(ice%vec%zeta_ac)
 
             case DEFAULT
             ! Do nothing, scale should be linear as defined above
@@ -346,7 +352,13 @@ contains
         end select  
 
         ! Calculate zeta_ac (zeta on ac-nodes)
-        ice%vec%zeta_ac = calc_zeta_ac(ice%vec%zeta)
+        !ice%vec%zeta_ac = calc_zeta_ac(ice%vec%zeta)
+
+        ice%vec%zeta(1) = 0.0 
+        do k = 2, nz-1
+            ice%vec%zeta(k) = 0.5 * (ice%vec%zeta_ac(k-1) + ice%vec%zeta_ac(k))
+        end do 
+        ice%vec%zeta(nz) = 1.0
 
 !         ! =======================================================
 !         ice%vec%zeta_ac = 0.0  
