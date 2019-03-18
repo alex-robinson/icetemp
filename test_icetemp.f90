@@ -52,6 +52,7 @@ program test_icetemp
     character(len=512) :: file1D 
     real(prec)         :: dt_out 
     integer            :: nz
+    real(prec)         :: smb 
     logical            :: is_celcius 
     character(len=56)  :: age_method 
     real(prec)         :: age_impl_kappa
@@ -61,17 +62,19 @@ program test_icetemp
     ! User options 
 
     t_start = 0.0       ! [yr]
-    t_end   = 1000e3     ! [yr]
+    t_end   = 500e3     ! [yr]
     dt      = 5.0       ! [yr]
 
     file1D  = "test.nc" 
-    dt_out  = 10000.0      ! [yr] 
+    dt_out  = 10000.0           ! [yr] 
 
-    nz      = 31           ! [--] Number of ice sheet points 
+    nz      = 31                ! [--] Number of ice sheet points 
+
+    smb     = 0.1               ! [m a-1] Surface mass balance 
 
     is_celcius = .FALSE. 
 
-    age_method     = "impl"     ! "expl" or "impl"
+    age_method     = "expl"     ! "expl" or "impl"
     age_impl_kappa = 1.5        ! [m2 a-1] Artificial diffusion for age tracing
 
     ! ===============================================================
@@ -84,7 +87,7 @@ program test_icetemp
     call icesheet_allocate(ice1,nz=nz,zeta_scale="exp") 
 
     ! Prescribe initial eismint conditions for testing 
-    call init_eismint_summit(ice1)
+    call init_eismint_summit(ice1,smb)
     !call init_k15_expa(ice1)
 
     ! Set age method and kappa 
@@ -128,9 +131,14 @@ program test_icetemp
 
         ! Age calculations 
         t_base = ice1%vec%t_dep(1) 
+
+        if (trim(age_method) .eq. "impl") then 
         call calc_tracer_column(ice1%vec%t_dep,ice1%vec%uz,ice1%vec%advecxy*0.0,time,ice1%bmb, &
                                 ice1%H_ice,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b, &
                                 ice1%age_impl_kappa,dt)
+        else 
+        call calc_tracer_column_expl(ice1%vec%t_dep,ice1%vec%uz,ice1%vec%advecxy*0.0,time,t_base,ice1%H_ice,ice1%vec%zeta,ice1%vec%zeta_ac,dt)
+        end if 
 
         if (mod(time,dt_out)==0) then 
             call write_step(ice1,ice1%vec,filename=file1D,time=time,T_robin=robin%vec%T_ice)
@@ -153,11 +161,12 @@ program test_icetemp
 contains 
 
 
-    subroutine init_eismint_summit(ice)
+    subroutine init_eismint_summit(ice,smb)
 
         implicit none 
 
         type(icesheet), intent(INOUT) :: ice
+        real(prec),     intent(IN)    :: smb 
 
         ! Local variables 
         integer :: k, nz, nz_ac   
@@ -167,7 +176,7 @@ contains
 
         ! Assign point values
         ice%T_srf    = 239.0       ! [K] 
-        ice%smb      = 0.1         ! [m/a]
+        ice%smb      = smb         ! [m/a]
         ice%bmb      = 0.0         ! [m/a]
         ice%Q_geo    = 42.0        ! [mW/m2]
         ice%H_ice    = 2997.0      ! [m] Summit thickness
@@ -202,11 +211,7 @@ contains
         end do 
 
         ! Define linear vertical velocity profile
-        ice%vec%uz(nz_ac) = -ice%smb 
-        ice%vec%uz(1)  = 0.0 
-        do k = 2, nz_ac 
-            ice%vec%uz(k) = ice%vec%uz(1)+(ice%vec%zeta_ac(k))*(ice%vec%uz(nz_ac)-ice%vec%uz(1))
-        end do 
+        ice%vec%uz = -ice%smb*ice%vec%zeta_ac 
         
         return 
 

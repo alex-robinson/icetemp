@@ -734,7 +734,7 @@ contains
                 ll    = sqrt(2*kappa*H_ice/mb_now)  ! Thermal_length_scale
 
                 ! Calculate ice temperature for this layer 
-                T_ice(k) = (sqrt_pi/2.0)*ll*dTdz_b*(error_function(z/ll)-error_function(H_ice/ll)) + T_srf 
+                T_ice(k) = (sqrt_pi/2.0)*ll*dTdz_b*(erf(z/ll)-erf(H_ice/ll)) + T_srf 
             end do 
 
         else if (.not. is_float .and. H_ice .gt. H_ice_min) then 
