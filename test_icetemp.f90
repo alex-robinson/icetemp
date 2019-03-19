@@ -68,9 +68,9 @@ program test_icetemp
     file1D  = "test.nc" 
     dt_out  = 10000.0           ! [yr] 
 
-    nz      = 31                ! [--] Number of ice sheet points 
+    nz      = 25                ! [--] Number of ice sheet points (aa-nodes + base + surface)
 
-    smb     = 0.1               ! [m a-1] Surface mass balance 
+    smb     = 0.5               ! [m a-1] Surface mass balance 
 
     is_celcius = .FALSE. 
 
@@ -84,7 +84,7 @@ program test_icetemp
     ntot = (t_end-t_start)/dt 
     
     ! Initialize icesheet object 
-    call icesheet_allocate(ice1,nz=nz,zeta_scale="exp") 
+    call icesheet_allocate(ice1,nz=nz,zeta_scale="tanh") 
 
     ! Prescribe initial eismint conditions for testing 
     call init_eismint_summit(ice1,smb)
@@ -287,7 +287,7 @@ contains
         integer :: k, nz_ac 
 
         nz_ac = nz-1 
-
+        
         ! First allocate 'up' variables (with vertical coordinate as height)
 
         ! Make sure all vectors are deallocated
@@ -324,60 +324,7 @@ contains
         allocate(ice%vec%t_dep(nz))
 
         ! Initialize zeta 
-!         ice%vec%zeta = 0.0  
-!         do k = 1, nz 
-!             ice%vec%zeta(k) = real(k-1,prec) / real(nz-1,prec)
-!             !write(*,*) ice%vec%zeta(k)
-!         end do  
-
-        ice%vec%zeta_ac = 0.0  
-        do k = 1, nz_ac 
-            ice%vec%zeta_ac(k) = real(k-1,prec) / real(nz_ac-1,prec)
-            !write(*,*) ice%vec%zeta(k)
-        end do 
-
-        ! Scale zeta to produce different resolution through column if desired
-        ! zeta_scale = ["linear","exp","wave"]
-        select case(trim(zeta_scale))
-            
-            case("exp")
-                ! Increase resolution at the base 
-                ice%vec%zeta_ac = ice%vec%zeta_ac**2.0
-
-            case("tanh")
-                ! Increase resolution at base and surface 
-
-                ice%vec%zeta_ac = tanh(1.5*pi*(ice%vec%zeta_ac-0.65))
-                ice%vec%zeta_ac = ice%vec%zeta_ac - minval(ice%vec%zeta_ac)
-                ice%vec%zeta_ac = ice%vec%zeta_ac / maxval(ice%vec%zeta_ac)
-
-            case DEFAULT
-            ! Do nothing, scale should be linear as defined above
-        
-        end select  
-
-        ! Calculate zeta_ac (zeta on ac-nodes)
-        !ice%vec%zeta_ac = calc_zeta_ac(ice%vec%zeta)
-
-        ice%vec%zeta(1) = 0.0 
-        do k = 2, nz-1
-            ice%vec%zeta(k) = 0.5 * (ice%vec%zeta_ac(k-1) + ice%vec%zeta_ac(k))
-        end do 
-        ice%vec%zeta(nz) = 1.0
-
-!         ! =======================================================
-!         ice%vec%zeta_ac = 0.0  
-!         do k = 1, nz_ac 
-!             ice%vec%zeta_ac(k) = real(k-1,prec) / real(nz_ac-1,prec)
-!             !write(*,*) ice%vec%zeta(k)
-!         end do  
-
-!         ice%vec%zeta(1) = 0.0 
-!         do k = 2, nz-1
-!             ice%vec%zeta(k) = 0.5 * (ice%vec%zeta_ac(k-1) + ice%vec%zeta_ac(k))
-!         end do 
-!         ice%vec%zeta(nz) = 1.0 
-!         ! =======================================================
+        call calc_zeta(ice%vec%zeta,ice%vec%zeta_ac,zeta_scale,zeta_exp=2.0) 
 
         ! Define thermodynamic zeta helper derivative variables dzeta_a/dzeta_b
         call calc_dzeta_terms(ice%vec%dzeta_a,ice%vec%dzeta_b,ice%vec%zeta,ice%vec%zeta_ac)
@@ -492,41 +439,59 @@ contains
 
     end subroutine write_step
 
-    function calc_zeta_ac(zeta_aa) result(zeta_ac)
+    subroutine calc_zeta(zeta_aa,zeta_ac,zeta_scale,zeta_exp)
         ! Calculate the vertical layer-edge axis (vertical ac-nodes)
-        ! given the vertical layer-boundary axis as input 
+        ! and the vertical cell-center axis (vertical aa-nodes),
+        ! including an extra zero-thickness aa-node at the base and surface
 
         implicit none 
 
-        real(prec), intent(IN)  :: zeta_aa(:) 
-        real(prec) :: zeta_ac(size(zeta_aa))
+        real(prec), intent(INOUT)  :: zeta_aa(:) 
+        real(prec), intent(INOUT)  :: zeta_ac(:) 
+        character(*), intent(IN)   :: zeta_scale 
+        real(prec),   intent(IN)   :: zeta_exp 
 
         ! Local variables
         integer :: k, nz_aa, nz_ac 
 
         nz_aa  = size(zeta_aa)
-        nz_ac  = nz_aa-1 
+        nz_ac  = size(zeta_ac)   ! == nz_aa - 1 
 
-        ! Get zeta_ac (edges of zeta layers - between zeta_aa values)
-        zeta_ac(1) = 0.0 
-        do k = 2, nz_ac-1
-            zeta_ac(k) = 0.5 * (zeta_aa(k)+zeta_aa(k+1))
+        ! Initially define a linear zeta scale 
+        ! Base = 0.0, Surface = 1.0 
+        do k = 1, nz_ac
+            zeta_ac(k) = 0.0 + 1.0*(k-1)/real(nz_ac-1)
         end do 
-        zeta_ac(nz_ac) = 1.0 
+
+        ! Scale zeta to produce different resolution through column if desired
+        ! zeta_scale = ["linear","exp","wave"]
+        select case(trim(zeta_scale))
+            
+            case("exp")
+                ! Increase resolution at the base 
+                zeta_ac = zeta_ac**(zeta_exp) 
+
+            case("tanh")
+                ! Increase resolution at base and surface 
+
+                zeta_ac = tanh(1.0*pi*(zeta_ac-0.5))
+                zeta_ac = zeta_ac - minval(zeta_ac)
+                zeta_ac = zeta_ac / maxval(zeta_ac)
+
+            case DEFAULT
+            ! Do nothing, scale should be linear as defined above
         
-        if (.FALSE.) then 
-            ! zeta_ac(nz_ac==nz_aa) solution for alternate bottom boundary condition
-
-            ! Get zeta_ac (edges of zeta layers - between zeta_aa values) 
-            do k = 1, nz_ac-1
-                zeta_ac(k) = 0.5 * (zeta_aa(k)+zeta_aa(k+1))
-            end do 
-            zeta_ac(nz_ac) = 1.0 
-
-        end if 
+        end select  
+        
+        ! Get zeta_aa (between zeta_ac values, as well as at the base and surface)
+        zeta_aa(1) = 0.0 
+        do k = 2, nz_aa-1
+            zeta_aa(k) = 0.5 * (zeta_ac(k-1)+zeta_ac(k))
+        end do 
+        zeta_aa(nz_aa) = 1.0 
 
         return 
 
-    end function calc_zeta_ac
+    end subroutine calc_zeta
 
 end program test_icetemp 
