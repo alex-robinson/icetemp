@@ -4,7 +4,7 @@ module thermodynamics
     ! Note: once icetemp is working well, this module could be 
     ! remerged into icetemp as one module. 
 
-    use defs, only : prec, sec_year, pi, T0, g, rho_ice, rho_sw, rho_w    
+    use defs, only : prec, sec_year, pi, T0, g, rho_ice, rho_sw, rho_w
 
     implicit none 
 
@@ -24,14 +24,14 @@ module thermodynamics
     public :: calc_f_pmp
     public :: calc_T_base_shlf_approx
     public :: define_temp_linear_3D
-    public :: calc_temp_linear_column
     public :: define_temp_robin_3D
-    public :: calc_temp_robin_column 
+    public :: calc_temp_linear_column
+    public :: calc_temp_robin_column
     
 contains
 
     elemental subroutine calc_bmb_grounded(bmb_grnd,T_prime_b,dTdz_b,kt_b,rho_ice, &
-                                                 Q_b,Q_geo_now,is_float)
+                                                 Q_b,Q_geo_now,f_grnd)
         ! Calculate everywhere there is at least some grounded ice 
         ! (centered aa node calculation)
 
@@ -41,14 +41,14 @@ contains
 
         implicit none 
         
-        real(prec), intent(OUT) :: bmb_grnd          ! [m/a] Basal mass balance, grounded
+        real(prec), intent(OUT) :: bmb_grnd          ! [m/a ice equiv.] Basal mass balance, grounded
         real(prec), intent(IN)  :: T_prime_b         ! [K] Basal ice temp relative to pressure melting point (ie T_prime_b=0 K == temperate)
         real(prec), intent(IN)  :: dTdz_b            ! [K/m] Gradient of temperature in ice, basal layer
         real(prec), intent(IN)  :: kt_b              ! [J a-1 m-1 K-1] Heat conductivity in ice, basal layer 
         real(prec), intent(IN)  :: rho_ice           ! [kg m-3] Ice density 
         real(prec), intent(IN)  :: Q_b               ! [J a-1 m-2] Basal heat production from friction and strain heating
         real(prec), intent(IN)  :: Q_geo_now         ! [J a-1 m-2] Geothermal heat flux 
-        logical,    intent(IN)  :: is_float          ! Is ice floating? (centered aa node)                 
+        real(prec), intent(IN)  :: f_grnd            ! [--] Grounded fraction (centered aa node)                 
         !real(prec), intent(IN)  :: kt_m              ! [J a-1 m-1 K-1] Heat conductivity in mantle (lithosphere) 
 
         ! Local variables
@@ -60,8 +60,8 @@ contains
         ! with an addition  of the term Q_strn_b 
         ! Note: formula only applies when base is temperate, ie
         ! when f_pmp > 0.0 
-        if ( (.not. is_float) .and. T_prime_b .eq. 0.0_prec) then 
-            ! Bed is temperate, calculate basal mass balance  
+        if ( f_grnd .gt. 0.0 .and. T_prime_b .eq. 0.0_prec) then 
+            ! Bed is grounded and temperate, calculate basal mass balance  
 
 !                 if (cond_bed) then 
 !                     ! Following grisli formulation: 
@@ -136,7 +136,7 @@ contains
 
     end subroutine calc_advec_vertical_column
 
-    subroutine calc_advec_horizontal_column(advecxy,var_ice,ux,uy,dx,i,j)
+    subroutine calc_advec_horizontal_column(advecxy,var_ice,H_ice,ux,uy,dx,i,j)
         ! Newly implemented advection algorithms (ajr)
         ! Output: [K a-1]
 
@@ -146,6 +146,7 @@ contains
 
         real(prec), intent(OUT) :: advecxy(:)       ! nz_aa 
         real(prec), intent(IN)  :: var_ice(:,:,:)   ! nx,ny,nz_aa  Enth, T, age, etc...
+        real(prec), intent(IN)  :: H_ice(:,:)       ! nx,ny 
         real(prec), intent(IN)  :: ux(:,:,:)        ! nx,ny,nz
         real(prec), intent(IN)  :: uy(:,:,:)        ! nx,ny,nz
         real(prec), intent(IN)  :: dx  
@@ -165,37 +166,34 @@ contains
         ny  = size(var_ice,2)
         nz_aa = size(var_ice,3) 
 
-        advecx = 0.0 
-        advecy = 0.0 
+        advecx  = 0.0 
+        advecy  = 0.0 
+        advecxy = 0.0 
 
         ! Loop over each point in the column
-        do k = 2, nz_aa-1 
+        do k = 1, nz_aa 
 
             ! Estimate direction of current flow into cell (x and y), centered in vertical layer and grid point
-            ux_aa = 0.25_prec*(ux(i,j,k)+ux(i-1,j,k)+ux(i,j,k-1)+ux(i-1,j,k-1))
-            uy_aa = 0.25_prec*(uy(i,j,k)+uy(i,j-1,k)+uy(i,j,k-1)+uy(i,j-1,k-1))
-
+            ux_aa = 0.5_prec*(ux(i,j,k)+ux(i-1,j,k))
+            uy_aa = 0.5_prec*(uy(i,j,k)+uy(i,j-1,k))
+            
             ! Explicit form (to test different order approximations)
             if (ux_aa .gt. 0.0 .and. i .ge. 3) then  
                 ! Flow to the right 
 
                 ! 1st order
-!                 advecx = dx_inv * 0.5*(ux(i-1,j,k)+ux(i-1,j,k-1))*(var_ice(i,j,k)-var_ice(i-1,j,k))
+                !advecx = dx_inv * ux(i-1,j,k)*(-(var_ice(i-1,j,k)-var_ice(i,j,k)))
                 ! 2nd order
-                !advecx = dx_inv2 * 0.5*(ux(i-1,j,k)+ux(i-1,j,k-1))*(-(4.0*var_ice(i-1,j,k)-var_ice(i-2,j,k)-3.0*var_ice(i,j,k)))
-                ! ux/uy on zeta_aa nodes:
                 advecx = dx_inv2 * ux(i-1,j,k)*(-(4.0*var_ice(i-1,j,k)-var_ice(i-2,j,k)-3.0*var_ice(i,j,k)))
-                
+
             else if (ux_aa .lt. 0.0 .and. i .le. nx-2) then 
                 ! Flow to the left
 
                 ! 1st order 
-!                 advecx = dx_inv * 0.5*(ux(i,j,k)+ux(i,j,k-1))*(var_ice(i+1,j,k)-var_ice(i,j,k))
+                !advecx = dx_inv * ux(i,j,k)*((var_ice(i+1,j,k)-var_ice(i,j,k)))
                 ! 2nd order
-!                 advecx = dx_inv2 * 0.5*(ux(i,j,k)+ux(i,j,k-1))*((4.0*var_ice(i+1,j,k)-var_ice(i+2,j,k)-3.0*var_ice(i,j,k)))
-                ! ux/uy on zeta_aa nodes:
                 advecx = dx_inv2 * ux(i,j,k)*((4.0*var_ice(i+1,j,k)-var_ice(i+2,j,k)-3.0*var_ice(i,j,k)))
-                
+
             else 
                 ! No flow 
                 advecx = 0.0
@@ -206,20 +204,16 @@ contains
                 ! Flow to the right 
 
                 ! 1st order
-!                 advecy = dx_inv * 0.5*(uy(i,j-1,k)+uy(i,j-1,k-1))*(var_ice(i,j,k)-var_ice(i,j-1,k))
+                !advecy = dx_inv * uy(i,j-1,k)*(-(var_ice(i,j-1,k)-var_ice(i,j,k)))
                 ! 2nd order
-!                 advecy = dx_inv2 * 0.5*(uy(i,j-1,k)+uy(i,j-1,k-1))*(-(4.0*var_ice(i,j-1,k)-var_ice(i,j-2,k)-3.0*var_ice(i,j,k)))
-                ! ux/uy on zeta_aa nodes:
                 advecy = dx_inv2 * uy(i,j-1,k)*(-(4.0*var_ice(i,j-1,k)-var_ice(i,j-2,k)-3.0*var_ice(i,j,k)))
-                
+
             else if (uy_aa .lt. 0.0 .and. j .le. ny-2) then 
                 ! Flow to the left
 
-                ! 1st order 
-!                 advecy = dx_inv * 0.5*(uy(i,j,k)+uy(i,j,k-1))*(var_ice(i,j+1,k)-var_ice(i,j,k))
+                ! 1st order
+                !advecy = dx_inv * uy(i,j,k)*((var_ice(i,j+1,k)-var_ice(i,j,k)))
                 ! 2nd order
-!                 advecy = dx_inv2 * 0.5*(uy(i,j,k)+uy(i,j,k-1))*((4.0*var_ice(i,j+1,k)-var_ice(i,j+2,k)-3.0*var_ice(i,j,k)))
-                ! ux/uy on zeta_aa nodes:
                 advecy = dx_inv2 * uy(i,j,k)*((4.0*var_ice(i,j+1,k)-var_ice(i,j+2,k)-3.0*var_ice(i,j,k)))
                 
             else
@@ -238,74 +232,66 @@ contains
     end subroutine calc_advec_horizontal_column
     
     subroutine calc_strain_heating(Q_strn,de,visc,cp,rho_ice)
-
         ! Calculate the general 3D internal strain heating
         ! as sum(D_ij*tau_ij)  (strain*stress)
         ! where stress has been calculated as stress_ij = 2*visc*strain
-        ! Units: Q_strn = Q * 1/(cp*rho) = [J a-1 m-3] * [K m3 J-1] = [K a-1]
+        ! Units: Q_Strn [J a-1 m-3]
+
+        ! Note: we use the simpler approach because in the shallow
+        ! model, the stress rate is simply the strain rate squared
+
+        ! Directly from Q_strn = tr(stress*strain)
+        ! (Cuffey and Patterson (2010) pag. 417, eq. 9.30)
+
+!         Q_strn = ( strss%txx*strn%dxx &
+!                  + strss%tyy*strn%dyy &
+!                  + strss%tzz*strn%dzz &    ! this term is not available yet in the code, would need to be calculated
+!              + 2.0*strss%txy*strn%dxy &
+!              + 2.0*strss%txz*strn%dxz &
+!              + 2.0*strss%tyz*strn%dyz )
+
+        ! Simpler approach:
+        ! Calculate Q_strn from effective strain rate and viscosity
+        ! (Greve and Blatter (2009) eqs. 4.7 and 5.65): 
+        !     Q_strn = tr(stress*strn) = tr(2*visc*strn*strn) = 2*visc*tr(strn*strn) = 4*visc*de^2
+        !     with tr(strn*strn) = 2*de^2
 
         implicit none
 
         real(prec),            intent(OUT) :: Q_strn(:,:,:)      ! nx,ny,nz_aa [K a-1] Heat production
-        !type(stress_3D_class), intent(IN)  :: strss             ! Stress tensor
-        !type(strain_3D_class), intent(IN)  :: strn              ! Strain rate tensor
         real(prec),            intent(IN)  :: de(:,:,:)          ! nx,ny,nz_aa [a-1] Effective strain rate 
         real(prec),            intent(IN)  :: visc(:,:,:)        ! nx,ny,nz_aa [Pa a-1] Viscosity
         real(prec),            intent(IN)  :: cp(:,:,:)          ! nx,ny,nz_aa [J kg-1 K-1] Specific heat capacity
         real(prec),            intent(IN)  :: rho_ice            ! [kg m-3] Ice density 
 
         ! Local variables
-        integer :: i, j, k, nx, ny, nz_aa 
-        real(prec), parameter :: Q_strn_max = 1e10         ! Check this limit!! 
+        integer :: nz_aa 
+        !real(prec), parameter :: Q_strn_max = 0.1          ! Q_strn > 0.1 is already high, it's only a safety valve.
 
-        nx    = size(Q_strn,1)
-        ny    = size(Q_strn,2)
         nz_aa = size(Q_strn,3)
 
-        ! Note: we use the simpler approach because in the shallow
-        ! model, the stress rate is simply the strain rate squared
-
-        ! Directly from Q_strn = tr(stress*strain)/cp
-        ! (Cuffey and Patterson (2010) pag. 417, eq. 9.30)
-
-!         Q_strn = ( strss%txx*strn%dxx &
-!                  + strss%tyy*strn%dyy &
-!                  + strss%tzz*strn%dzz &    ! this term is not available yet in the code, needs to be calculated
-!              + 2.0*strss%txy*strn%dxy &
-!              + 2.0*strss%txz*strn%dxz &
-!              + 2.0*strss%tyz*strn%dyz ) * 1.0/(cp*rho_ice) 
-
-        ! Simpler approach:
-        ! Calculate Q_strn from effective strain rate and viscosity
-        ! (Greve and Blatter (2009) eqs. 4.7 and 5.65): 
-        !     Q_strn = tr(stress*strn)/cp = tr(2*visc*strn*strn)/cp = 2*visc*tr(strn*strn)/cp = 4*visc*de^2/cp
-        !     with tr(strn*strn) = 2*de^2
-
-        Q_strn = 4.0*visc * de**2 * 1.0/(cp*rho_ice) 
+        ! Calculate strain heating 
+        ! following Greve and Blatter (2009), Eqs. 4.7 and 5.65
+        Q_strn = 4.0*visc * de**2
         
-        ! Set basal and surface layer values equal to zero for consistency
-        ! (since basal and surface layer thickness is technically zero)
-        Q_strn(:,:,1)     = 0.0 
-        Q_strn(:,:,nz_aa) = 0.0 
-
         ! Limit strain heating to reasonable values 
-        where (Q_strn .gt. Q_strn_max) Q_strn = Q_strn_max
+        !where (Q_strn .gt. Q_strn_max) Q_strn = Q_strn_max
 
         return 
 
     end subroutine calc_strain_heating
-
+    
     subroutine calc_strain_heating_sia(Q_strn,ux,uy,dzsdx,dzsdy,cp,H_ice,rho_ice,zeta_aa,zeta_ac)
 
         ! Calculate the general 3D internal strain heating
         ! as sum(D_ij*tau_ij)  (strain*stress)
         ! where stress has been calculated as stress_ij = 2*visc*strain
-        ! Units: Q_strn = Q * 1/(cp*rho) = [J a-1 m-3] * [K m3 J-1] = [K a-1]
+        ! Units: Q_strn = Q [J a-1 m-3]
 
-        ! Q_strn = rho*g*H*(duxdz*dzsdx + duydz*dzsdy) / (rho*cp)
-        ! Units: [K a-1]
-        ! Note: rho_ice / rho_ice removed from equation 
-        
+        ! SIA approximation:
+        ! Q_strn = rho*g*H*(duxdz*dzsdx + duydz*dzsdy)
+        ! Units: [J a-1 m-3]
+
         implicit none
 
         real(prec),            intent(OUT) :: Q_strn(:,:,:)      ! nx,ny,nz_aa  [Pa m a-1 ??] Heat production
@@ -321,13 +307,14 @@ contains
 
         ! Local variables
         integer :: i, j, k, nx, ny, nz_aa 
-        real(prec), parameter :: Q_strn_max = 0.1         ! Check this limit!! 
         real(prec) :: ux_aa_up, ux_aa_dwn
         real(prec) :: uy_aa_up, uy_aa_dwn
         real(prec) :: duxdz, duydz
         real(prec) :: dzsdx_aa, dzsdy_aa  
         real(prec) :: dz, depth 
 
+        real(prec), parameter :: Q_strn_max = 0.1          ! Q_strn > 0.1 is already high, it's only a safety valve. 
+        
         nx    = size(Q_strn,1)
         ny    = size(Q_strn,2)
         nz_aa = size(Q_strn,3)
@@ -360,7 +347,7 @@ contains
                     
                     depth = H_ice(i,j)*(1.0-zeta_aa(k))
                     
-                    Q_strn(i,j,k) = (-g*depth / cp(i,j,k)) * (duxdz*dzsdx_aa + duydz*dzsdy_aa)
+                    Q_strn(i,j,k) = (-rho_ice*g*depth) * (duxdz*dzsdx_aa + duydz*dzsdy_aa)
                     
                 end do 
 
@@ -378,9 +365,51 @@ contains
     end subroutine calc_strain_heating_sia
 
     subroutine calc_basal_heating(Q_b,ux_b,uy_b,taub_acx,taub_acy)
-        ! Qb [J a-1 m-2] == [m a-1] * [J m-3]
+         ! Qb [J a-1 m-2] == [m a-1] * [J m-3]
+         ! Note: grounded ice fraction f_grnd_acx/y not used here, because taub_acx/y already accounts
+         ! for the grounded fraction via beta_acx/y: Q_b = tau_b*u = -beta*u*u.
+
+        real(prec), intent(INOUT) :: Q_b(:,:)               ! [J a-1 K-1] Basal heat production (friction)
+        real(prec), intent(IN)  :: ux_b(:,:)              ! Basal velocity, x-component (staggered x)
+        real(prec), intent(IN)  :: uy_b(:,:)              ! Basal velocity, y-compenent (staggered y)
+        real(prec), intent(IN)  :: taub_acx(:,:)          ! Basal friction (staggered x)
+        real(prec), intent(IN)  :: taub_acy(:,:)          ! Basal friction (staggered y)
+
+        ! Local variables
+        integer    :: i, j, nx, ny 
+        real(prec), allocatable :: Qb_acx(:,:)
+        real(prec), allocatable :: Qb_acy(:,:)
+
+        nx = size(Q_b,1)
+        ny = size(Q_b,2)
+
+        allocate(Qb_acx(nx,ny))
+        allocate(Qb_acy(nx,ny))
+
+        ! Determine basal frictional heating values (staggered acx/acy nodes)
+        Qb_acx = abs(ux_b*taub_acx)   ! [Pa m a-1] == [J a-1 m-2]
+        Qb_acy = abs(uy_b*taub_acy)   ! [Pa m a-1] == [J a-1 m-2]
+
+        Q_b = 0.0  
+ 
+        ! Get basal frictional heating on centered nodes (aa-grid)          
+        do j = 2, ny-1
+        do i = 2, nx-1
+
+            ! Average from ac-nodes to aa-node
+            Q_b(i,j) = 0.25*(Qb_acx(i,j)+Qb_acx(i-1,j)+Qb_acy(i,j)+Qb_acy(i,j-1))
+ 
+        end do 
+        end do 
+        
+        return 
+ 
+    end subroutine calc_basal_heating
+
+    subroutine calc_basal_heating1(Q_b,ux_b,uy_b,taub_acx,taub_acy)
+        ! Q_b [J a-1 m-2] == [m a-1] * [J m-3]
         ! Note: grounded ice fraction f_grnd_acx/y not used here, because taub_acx/y already accounts
-        ! for the grounded fraction.
+        ! for the grounded fraction via beta_acx/y: Q_b = tau_b*u = -beta*u*u.
         ! Note: it is assumed that strain heating is zero at the very base (no thickness) layer, so
         ! it is not included here. 
 
@@ -394,35 +423,38 @@ contains
         
         ! Local variables
         integer    :: i, j, nx, ny 
-        real(prec), allocatable :: Qb_acx(:,:), Qb_acy(:,:)
-        
+        integer    :: im1, jm1 
+        real(prec) :: Qb_acx_1, Qb_acx_2, Qb_acy_1, Qb_acy_2   
+
         nx = size(Q_b,1)
         ny = size(Q_b,2)
-
-        ! Allocate staggered friction heat variables 
-        allocate(Qb_acx(nx,ny))
-        allocate(Qb_acy(nx,ny)) 
-
-        ! Determine basal frictional heating values (staggered acx/acy nodes)
-        Qb_acx = abs(ux_b*taub_acx)   ! [Pa m a-1] == [J a-1 m-2]
-        Qb_acy = abs(uy_b*taub_acy)   ! [Pa m a-1] == [J a-1 m-2]
 
         ! Initially set basal heating to zero everywhere 
         Q_b = 0.0  
 
-        ! Get basal frictional heating on centered nodes (Aa grid)
-        do j = 2, ny-1
-        do i = 2, nx-1
+        ! Get basal frictional heating on centered nodes (aa-grid)
+        do j = 1, ny
+        do i = 1, nx
 
-            ! Average from Ac nodes to Aa node
-            Q_b(i,j) = 0.25*(Qb_acx(i,j)+Qb_acx(i-1,j)+Qb_acy(i,j)+Qb_acy(i,j-1))
+            im1 = max(i-1,1)
+            jm1 = max(j-1,1)
+
+            ! Determine basal frictional heating values (staggered acx/acy nodes)
+            ! [Pa m a-1] == [J a-1 m-2]
+            Qb_acx_1 = abs(ux_b(im1,j)*taub_acx(im1,j))
+            Qb_acx_2 = abs(ux_b(i,j)  *taub_acx(i,j))
+            Qb_acy_1 = abs(uy_b(i,jm1)*taub_acy(i,jm1))
+            Qb_acy_2 = abs(uy_b(i,j)  *taub_acy(i,j))
+            
+            ! Average from ac-nodes to aa-node
+            Q_b(i,j) = 0.25*(Qb_acx_1+Qb_acx_2+Qb_acy_1+Qb_acy_2)
 
         end do
         end do
 
         return 
 
-    end subroutine calc_basal_heating
+    end subroutine calc_basal_heating1
 
     elemental function calc_specific_heat_capacity(T_ice) result(cp)
 
@@ -481,7 +513,7 @@ contains
 
     end function calc_T_pmp 
 
-    elemental function calc_f_pmp(T_ice,T_pmp,gamma,is_float) result(f_pmp)
+    elemental function calc_f_pmp(T_ice,T_pmp,gamma,f_grnd) result(f_pmp)
         ! Calculate the fraction of gridpoint at the pressure melting point (pmp),
         ! ie, when T_ice >= T_pmp. Facilitates a smooth transition between
         ! frozen and temperate ice. (Greve, 2005; Hindmarsh and Le Meur, 2001)
@@ -491,10 +523,10 @@ contains
         real(prec), intent(IN) :: T_ice
         real(prec), intent(IN) :: T_pmp
         real(prec), intent(IN) :: gamma
-        logical, intent(IN) :: is_float  
+        real(prec), intent(IN) :: f_grnd  
         real(prec) :: f_pmp 
 
-        if (is_float) then
+        if (f_grnd .eq. 0.0) then
             ! Floating points are temperate by default
             f_pmp = 1.0 
 
@@ -527,14 +559,17 @@ contains
 
     end function calc_f_pmp 
     
-    elemental function calc_T_base_shlf_approx(H_ice) result(T_base_shlf)
+    elemental function calc_T_base_shlf_approx(H_ice,T_pmp,H_grnd) result(T_base_shlf)
         ! Calculate the basal shelf temperature for floating ice
         ! as the estimated freezing temperature of seawater
         ! following Jenkins (1991)
+        ! ajr: modified to ensure that temp approaches T_pmp as ice becomes grounded 
 
         implicit none 
 
         real(prec), intent(IN) :: H_ice 
+        real(prec), intent(IN) :: T_pmp 
+        real(prec), intent(IN) :: H_grnd 
         real(prec) :: T_base_shlf
 
         ! Local variables 
@@ -542,8 +577,20 @@ contains
         real(prec), parameter :: b1 =   0.0901      ! [degC]
         real(prec), parameter :: c1 =   7.61E-4     ! [degC / m]
         real(prec), parameter :: S0 =   34.75       ! [g / kg == PSU]
+        real(prec) :: f_scalar, H_grnd_lim 
 
         T_base_shlf = a1*S0 + b1 + c1*(rho_ice/rho_sw)*H_ice + T0 
+
+        ! Additionally ensure that the shelf temperature is approaching the pressure melting point
+        ! as the grounding line is reached 
+        H_grnd_lim = -100.0
+        f_scalar = (H_grnd - H_grnd_lim) / H_grnd_lim
+        f_scalar = min(f_scalar,1.0)
+        f_scalar = max(f_scalar,0.0)
+        T_base_shlf   = f_scalar*T_base_shlf + (1.0-f_scalar)*T_pmp
+
+        ! Limit everything to the ice pressure melting point 
+        T_base_shlf = min(T_base_shlf,T_pmp)
 
         return 
 
@@ -721,7 +768,7 @@ contains
 
         ! Calculate temperature gradient at base 
         dTdz_b = -Q_geo_now/kt(1) 
-
+        
         if (.not. is_float .and. H_ice .gt. H_ice_min .and. mb_net .gt. 0.0) then 
             ! Impose Robin solution 
             
@@ -734,7 +781,7 @@ contains
                 ll    = sqrt(2*kappa*H_ice/mb_now)  ! Thermal_length_scale
 
                 ! Calculate ice temperature for this layer 
-                T_ice(k) = (sqrt_pi/2.0)*ll*dTdz_b*(erf(z/ll)-erf(H_ice/ll)) + T_srf 
+                T_ice(k) = (sqrt_pi/2.0)*ll*dTdz_b*(error_function(z/ll)-error_function(H_ice/ll)) + T_srf 
             end do 
 
         else if (.not. is_float .and. H_ice .gt. H_ice_min) then 

@@ -3,124 +3,18 @@ module icetemp
 
     use defs, only : prec, pi, g, sec_year, T0, rho_ice, rho_sw, rho_w, L_ice  
     use solver_tridiagonal, only : solve_tridiag 
-    use thermodynamics, only : calc_bmb_grounded, calc_advec_vertical_column, calc_advec_horizontal_column, &
-                                calc_T_pmp, calc_T_base_shlf_approx, calc_temp_linear_column
+    use thermodynamics, only : calc_bmb_grounded, calc_advec_vertical_column
 
     implicit none
     
     private
-    public :: calc_icetemp_3D
     public :: calc_temp_column 
     public :: calc_dzeta_terms
 
 contains 
 
-    subroutine calc_icetemp_3D(T_ice,bmb_grnd,dTdz_b,T_pmp,cp,ct,ux,uy,uz,Q_strn,Q_b,Q_geo, &
-                            T_srf,H_ice,H_w,f_grnd,zeta_aa,zeta_ac,dzeta_a,dzeta_b,dt,dx)
-        ! Solver for thermodynamics of ice 
-        ! Note zeta=height, k=1 base, k=nz surface 
-
-        implicit none 
-
-        real(prec), intent(INOUT) :: T_ice(:,:,:)   ! [K] Ice column temperature
-        real(prec), intent(INOUT) :: bmb_grnd(:,:)  ! [m a-1] Basal mass balance (melting is negative)
-        real(prec), intent(OUT)   :: dTdz_b(:,:)    ! [K m-1] Ice temperature gradient at the base
-        real(prec), intent(IN)    :: T_pmp(:,:,:)   ! [K] Pressure melting point temp.
-        real(prec), intent(IN)    :: cp(:,:,:)      ! [J kg-1 K-1] Specific heat capacity
-        real(prec), intent(IN)    :: ct(:,:,:)      ! [J a-1 m-1 K-1] Heat conductivity 
-        real(prec), intent(IN)    :: ux(:,:,:)      ! [m a-1] Horizontal x-velocity 
-        real(prec), intent(IN)    :: uy(:,:,:)      ! [m a-1] Horizontal y-velocity 
-        real(prec), intent(IN)    :: uz(:,:,:)      ! [m a-1] Vertical velocity 
-        real(prec), intent(IN)    :: Q_strn(:,:,:)  ! [K a-1] Internal strain heat production in ice
-        real(prec), intent(IN)    :: Q_b(:,:)       ! [J a-1 m-2] Basal frictional heat production 
-        real(prec), intent(IN)    :: Q_geo(:,:)     ! [mW m-2] Geothermal heat flux 
-        real(prec), intent(IN)    :: T_srf(:,:)     ! [K] Surface temperature 
-        real(prec), intent(IN)    :: H_ice(:,:)     ! [m] Ice thickness 
-        real(prec), intent(IN)    :: H_w(:,:)       ! [m] Basal water layer thickness 
-        real(prec), intent(IN)    :: f_grnd(:,:)    ! [--] Floating point or grounded?
-        real(prec), intent(IN)    :: zeta_aa(:)     ! [--] Vertical sigma coordinates (zeta==height), aa-nodes
-        real(prec), intent(IN)    :: zeta_ac(:)     ! [--] Vertical sigma coordinates (zeta==height), ac-nodes
-        real(prec), intent(IN)    :: dzeta_a(:)    ! d Vertical height axis (0:1) 
-        real(prec), intent(IN)    :: dzeta_b(:)    ! d Vertical height axis (0:1) 
-        real(prec), intent(IN)    :: dt             ! [a] Time step 
-        real(prec), intent(IN)    :: dx             ! [a] Horizontal grid step 
-        
-        ! Local variables
-        integer :: i, j, k, nx, ny, nz_aa, nz_ac  
-        real(prec), allocatable  :: advecxy(:)   ! [K a-1 m-2] Horizontal heat advection 
-        logical :: is_float 
-        real(prec) :: H_w_dot 
-
-        nx    = size(T_ice,1)
-        ny    = size(T_ice,2)
-        nz_aa = size(zeta_aa,1)
-        nz_ac = size(zeta_ac,1)
-
-        allocate(advecxy(nz_aa))
-        advecxy = 0.0 
-
-        do j = 3, ny-2
-        do i = 3, nx-2 
-            
-            ! Determine if point is floating 
-            is_float = (f_grnd(i,j) .eq. 0.0)
-            
-            if (H_ice(i,j) .gt. 10.0) then 
-                ! Thick ice exists, call thermodynamic solver for the column
-
-                ! Pre-calculate the contribution of horizontal advection to column solution
-                call calc_advec_horizontal_column(advecxy,T_ice,ux,uy,dx,i,j)
-                
-                call calc_temp_column(T_ice(i,j,:),bmb_grnd(i,j),dTdz_b(i,j),T_pmp(i,j,:),cp(i,j,:),ct(i,j,:), &
-                                        uz(i,j,:),Q_strn(i,j,:),advecxy,Q_b(i,j),Q_geo(i,j),T_srf(i,j),H_ice(i,j), &
-                                        H_w(i,j),is_float,zeta_aa,zeta_ac,dzeta_a,dzeta_b,dt)
-
-            else ! H_ice(i,j) .le. 10.0
-                ! Ice is too thin or zero, prescribe linear temperature profile
-                ! between temperate ice at base and surface temperature 
-
-                T_ice(i,j,:) = calc_temp_linear_column(T_srf(i,j),T_pmp(i,j,1),T_pmp(i,j,nz_aa),zeta_aa)
-
-            end if 
-
-        end do 
-        end do 
-
-        ! Fill in borders 
-        T_ice(2,:,:)    = T_ice(3,:,:) 
-        T_ice(1,:,:)    = T_ice(3,:,:) 
-        T_ice(nx-1,:,:) = T_ice(nx-2,:,:) 
-        T_ice(nx,:,:)   = T_ice(nx-2,:,:) 
-        
-        T_ice(:,2,:)    = T_ice(:,3,:) 
-        T_ice(:,1,:)    = T_ice(:,3,:) 
-        T_ice(:,ny-1,:) = T_ice(:,ny-2,:) 
-        T_ice(:,ny,:)   = T_ice(:,ny-2,:) 
-        
-        ! Without conductive bedrock: fill in bedrock solution with steady-state diffusion solution
-        ! (linear profile with slope of Q_geo/k)
-
-        ! TO DO 
-
-!         do j = 1, ny
-!         do i = 1, nx 
-            
-!             ! Prescribe solution for bedrock points:
-!             ! Calculate temperature in the bedrock as a linear gradient of ghf
-!             ! Note: Using T(nzb) from the previous timestep for simplicity
-!             do k = 1, nzm
-!                 T_rock(i,j,k) = T(nzb)+dzm*(nzm-k+1)*Q_geo_now/cm
-!             end do
-        
-!         end do 
-!         end do 
-
-        return 
-
-    end subroutine calc_icetemp_3D
-
     subroutine calc_temp_column(T_ice,bmb_grnd,dTdz_b,T_pmp,cp,ct,uz,Q_strn,advecxy,Q_b,Q_geo, &
-                                T_srf,H_ice,H_w,is_float,zeta_aa,zeta_ac,dzeta_a,dzeta_b,dt)
+                    T_srf,T_shlf,H_ice,H_w,f_grnd,zeta_aa,zeta_ac,dzeta_a,dzeta_b,dt)
         ! Thermodynamics solver for a given column of ice 
         ! Note zeta=height, k=1 base, k=nz surface 
         ! Note: nz = number of vertical boundaries (including zeta=0.0 and zeta=1.0), 
@@ -143,9 +37,10 @@ contains
         real(prec), intent(IN)    :: Q_b          ! [J a-1 m-2] Basal frictional heat production 
         real(prec), intent(IN)    :: Q_geo        ! [mW m-2] Geothermal heat flux 
         real(prec), intent(IN)    :: T_srf        ! [K] Surface temperature 
+        real(prec), intent(IN)    :: T_shlf       ! [K] Marine-shelf interface temperature
         real(prec), intent(IN)    :: H_ice        ! [m] Ice thickness 
         real(prec), intent(IN)    :: H_w          ! [m] Basal water layer thickness 
-        logical,    intent(IN)    :: is_float     ! [--] Floating point or grounded?
+        real(prec), intent(IN)    :: f_grnd       ! [--] Grounded fraction
         real(prec), intent(IN)    :: zeta_aa(:)  ! nz_aa [--] Vertical sigma coordinates (zeta==height), layer centered aa-nodes
         real(prec), intent(IN)    :: zeta_ac(:)  ! nz_ac [--] Vertical height axis temperature (0:1), layer edges ac-nodes
         real(prec), intent(IN)    :: dzeta_a(:)  ! nz_aa [--] Solver discretization helper variable ak
@@ -156,8 +51,9 @@ contains
         integer :: k, nz_aa, nz_ac
         real(prec) :: Q_geo_now, ghf_conv 
         real(prec) :: Q_strn_now
-        real(prec) :: H_w_dot
-        real(prec) :: melt_internal, T_excess  
+        real(prec) :: H_w_predicted
+        real(prec) :: T_excess
+        real(prec) :: melt_internal   
 
         real(prec), allocatable :: advecz(:)   ! nz_aa, for explicit vertical advection solving
         logical, parameter      :: test_expl_advecz = .FALSE. 
@@ -171,7 +67,7 @@ contains
         real(prec), allocatable :: rhs(:)      ! nz_aa 
         real(prec), allocatable :: solution(:) ! nz_aa
         real(prec) :: fac, fac_a, fac_b, uz_aa, dzeta, dz, dz1, dz2  
-        real(prec) :: kappa_a, kappa_b
+        real(prec) :: kappa_a, kappa_b, dza, dzb 
 
         nz_aa = size(zeta_aa,1)
         nz_ac = size(zeta_ac,1)
@@ -190,7 +86,7 @@ contains
 
         ! Calculate diffusivity on cell centers (aa-nodes)
         kappa_aa = ct / (rho_ice*cp)
-        
+
         ! Calculate gradient in kappa (centered on aa-nodes)
         dkappadz = 0.0 
         do k = 2, nz_aa-1 
@@ -207,23 +103,29 @@ contains
 
         ! Step 2: apply vertical implicit diffusion-advection 
         
-        ! Ice base
-        if (is_float) then
-            ! Floating ice - set temperature equal to basal temperature at pressure melting point, or marine freezing temp
+        ! == Ice base ==
 
+        if (f_grnd .lt. 1.0) then
+            ! Floating or partially floating ice - set temperature equal 
+            ! to basal temperature at pressure melting point, or marine freezing temp,
+            ! or weighted average between the two.
+
+            ! Impose the weighted average of the pressure melting point and the marine freezing temp.
             subd(1) = 0.0_prec
             diag(1) = 1.0_prec
             supd(1) = 0.0_prec
-            rhs(1)  = min(calc_T_base_shlf_approx(H_ice),T_pmp(1))
+            rhs(1)  = f_grnd*T_pmp(1) + (1.0-f_grnd)*T_shlf
 
         else 
             ! Grounded ice 
 
-            ! Determine expected change in basal water total for this timestep [m]
-            H_w_dot = -(bmb_grnd*(rho_w/rho_ice))*dt 
+            ! Determine expected basal water thickness [m] for this timestep,
+            ! using basal mass balance from previous time step (rough guess)
+            H_w_predicted = H_w - (bmb_grnd*(rho_w/rho_ice))*dt 
 
+            ! == Assign grounded basal boundary conditions ==
 
-            if (T_ice(1) .lt. T_pmp(1) .or. H_w+H_w_dot .lt. 0.0_prec) then   
+            if (T_ice(1) .lt. T_pmp(1) .or. H_w_predicted .lt. 0.0_prec) then   
                 ! Frozen at bed, or about to become frozen 
 
                 ! maintain balance of heat sources and sinks
@@ -238,16 +140,21 @@ contains
                 subd(1) =  0.0_prec
                 diag(1) =  1.0_prec
                 supd(1) = -1.0_prec
-                rhs(1)  = (Q_b + Q_geo_now)/ct(1) * (dzeta*H_ice)
-
+                rhs(1)  = (Q_b + Q_geo_now) * dzeta*H_ice / ct(1)
+                
                 if (.FALSE.) then 
-                    fac_a    = kappa_aa(1) * dt/H_ice**2 *1.0/(2.0*(zeta_ac(2)-zeta_ac(1))*(zeta_aa(2)-zeta_aa(1)))
-                    fac_b    = kappa_aa(1) * dt/H_ice    *1.0/(2.0*(zeta_ac(2)-zeta_ac(1)))
-                    
-                    subd(1) =  0.0_prec
-                    diag(1) =  1.0_prec + fac_a
-                    supd(1) =  -fac_a
-                    rhs(1)  =  T_ice(1) + fac_b*Q_geo_now/ct(1)
+                    ! Alternative boundary condition approach - works, but needs testing and refinement 
+
+                ! Convert units of Q_strn [J a-1 m-3] => [K a-1]
+                Q_strn_now = Q_strn(1)/(rho_ice*cp(1))
+
+                fac      = dt * ct(1) / (rho_ice*cp(1)) / H_ice**2
+               
+                subd(1) =  0.0_prec
+                diag(1) =  1.0_prec  + fac/((zeta_ac(2)-zeta_ac(1))*(zeta_aa(2) - zeta_aa(1))  )     !mmr  1.0_prec
+                supd(1) =  -1.0_prec  * fac/((zeta_ac(2)-zeta_ac(1))*(zeta_aa(2) - zeta_aa(1))  )     !mmr -1.0_prec
+                rhs(1)  =  T_ice(1) + fac* ((Q_geo_now) * H_ice / ct(1)) * 1.0_prec/( (zeta_ac(2)-zeta_ac(1))) + Q_strn_now*dt   !+ uz(1) * (Q_b_now) *H*dt / (( zeta_aa(2)-zeta_aa(1) ) * ct(1) )    ! mmr (Q_b_now) * dzetaBot*H / ct(1)
+                
                 end if 
 
             else 
@@ -263,7 +170,8 @@ contains
 
         end if  ! floating or grounded 
 
-        ! Ice interior layers 2:nz_aa-1
+        ! == Ice interior layers 2:nz_aa-1 ==
+
         do k = 2, nz_aa-1
 
             if (test_expl_advecz) then 
@@ -272,9 +180,12 @@ contains
 
             else
                 ! With implicit vertical advection (diffusion + advection)
-                uz_aa   = 0.5*(uz(k-1)+uz(k)) !+ dkappadz(k)  ! ac => aa nodes
-                
+                uz_aa   = 0.5*(uz(k-1)+uz(k))   ! ac => aa nodes
+
             end if 
+
+            ! Add 'vertical advection' due to the gradient in kappa 
+            !uz_aa = uz_aa + dkappadz(k)
 
             ! Convert units of Q_strn [J a-1 m-3] => [K a-1]
             Q_strn_now = Q_strn(k)/(rho_ice*cp(k))
@@ -304,12 +215,12 @@ contains
             ! ajr: simply use aa-node kappas for now
             kappa_a = kappa_aa(k) 
             kappa_b = kappa_a
-             
+
         end if 
 
-            ! Vertical distance for centered difference scheme
+            ! Vertical distance for centered difference advection scheme
             dz      =  H_ice*(zeta_aa(k+1)-zeta_aa(k-1))
-
+            
             fac_a   = -kappa_a*dzeta_a(k)*dt/H_ice**2
             fac_b   = -kappa_b*dzeta_b(k)*dt/H_ice**2
 
@@ -320,13 +231,16 @@ contains
 
         end do 
 
-        ! Ice surface 
+        ! == Ice surface ==
+
         subd(nz_aa) = 0.0_prec
         diag(nz_aa) = 1.0_prec
         supd(nz_aa) = 0.0_prec
         rhs(nz_aa)  = min(T_srf,T0)
 
-        ! Call solver 
+
+        ! == Call solver ==
+
         call solve_tridiag(subd,diag,supd,rhs,solution)
 
         ! Copy the solution into the temperature variables
@@ -341,17 +255,16 @@ contains
         do k = nz_aa-1, 2, -1 
             ! Descend from surface to base layer (center of layer)
 
-            ! Store temperature difference with pressure melting point (excess energy)
-            T_excess = T_ice(k) - T_pmp(k) 
+            ! Store temperature difference above pressure melting point (excess energy)
+            T_excess = max(T_ice(k)-T_pmp(k),0.0)
 
-            ! Calculate basal mass balance as sum of all water produced in column 
+            ! Calculate basal mass balance as sum of all water produced in column,
+            ! reset temperature to pmp  
             if (T_excess .gt. 0.0) then 
-                melt_internal = melt_internal - T_excess * H_ice*(zeta_ac(k)-zeta_ac(k-1))*cp(k) / (L_ice * dt) 
+                melt_internal = melt_internal + T_excess * H_ice*(zeta_ac(k)-zeta_ac(k-1))*cp(k) / (L_ice * dt) 
+                T_ice(k)      = T_pmp(k)
             end if 
-
-            ! Reset temperature to below T_pmp if needed
-            if (T_ice(k) .gt. T_pmp(k)) T_ice(k) = T_pmp(k)
-
+            
         end do 
 
         ! Make sure base is below pmp too (mass/energy balance handled via bmb_grnd calculation externally)
@@ -368,7 +281,7 @@ contains
         end if 
         
         ! Calculate basal mass balance (valid for grounded ice only)
-        call calc_bmb_grounded(bmb_grnd,T_ice(1)-T_pmp(1),dTdz_b,ct(1),rho_ice,Q_b,Q_geo_now,is_float)
+        call calc_bmb_grounded(bmb_grnd,T_ice(1)-T_pmp(1),dTdz_b,ct(1),rho_ice,Q_b,Q_geo_now,f_grnd)
 
         ! Include internal melting in bmb_grnd 
         bmb_grnd = bmb_grnd - melt_internal 
@@ -386,7 +299,7 @@ contains
         real(prec), intent(INOUT) :: dzeta_a(:)    ! nz_aa
         real(prec), intent(INOUT) :: dzeta_b(:)    ! nz_aa
         real(prec), intent(IN)    :: zeta_aa(:)    ! nz_aa 
-        real(prec), intent(IN)    :: zeta_ac(:)    ! nz_ac == nz_aa-1
+        real(prec), intent(IN)    :: zeta_ac(:)    ! nz_ac == nz_aa-1 
 
         ! Local variables 
         integer :: k, nz_layers, nz_aa    
@@ -398,7 +311,7 @@ contains
         ! Initialize dzeta_a/dzeta_b to zero, first and last indices will not be used (end points)
         dzeta_a = 0.0 
         dzeta_b = 0.0 
-
+        
         do k = 2, nz_aa-1 
             dzeta_a(k) = 1.0/ ( (zeta_ac(k) - zeta_ac(k-1)) * (zeta_aa(k) - zeta_aa(k-1)) )
         enddo
@@ -410,7 +323,7 @@ contains
         return 
 
     end subroutine calc_dzeta_terms
-    
+
 end module icetemp
 
 

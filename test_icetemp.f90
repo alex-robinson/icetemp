@@ -29,12 +29,13 @@ program test_icetemp
         real(prec) :: H_ice             ! [m] Ice thickness 
         real(prec) :: H_w               ! [m] Water present at the ice base 
         real(prec) :: T_srf             ! [K] Ice surface temperature 
+        real(prec) :: T_shlf            ! [K] Ice shelf base temperature 
         real(prec) :: smb               ! [m a**-1] Surface mass balance
         real(prec) :: bmb               ! [m a**-1] Basal mass balance
         real(prec) :: dTdz_b            ! [K m-1] Basal vertical temperature gradient 
         real(prec) :: Q_geo             ! [mW m-2] Geothermal heat flux 
-        real(prec) :: Q_b               ! [] Basal heat production 
-        logical    :: is_float          ! [-] Floating flag 
+        real(prec) :: Q_b               ! [] Basal heat production
+        real(prec) :: f_grnd            ! [-] Grounded fraction 
         character(len=56) :: age_method ! Method to use for age calculation 
         real(prec) :: age_impl_kappa    ! [m2 a-1] Artificial diffusion term for implicit age solving 
         type(icesheet_vectors) :: vec   ! For height coordinate systems with k=1 base and k=nz surface
@@ -69,7 +70,7 @@ program test_icetemp
 
     nz      = 25                ! [--] Number of ice sheet points (aa-nodes + base + surface)
 
-    smb     = 0.1               ! [m a-1] Surface mass balance 
+    smb     = 0.5               ! [m a-1] Surface mass balance 
 
     is_celcius = .FALSE. 
 
@@ -96,13 +97,13 @@ program test_icetemp
     ! Calculate the robin solution for comparison 
     robin = ice1  
     robin%vec%T_ice = calc_temp_robin_column(robin%vec%zeta,robin%vec%T_pmp,robin%vec%kt,robin%vec%cp,rho_ice, &
-                                       robin%H_ice,robin%T_srf,robin%smb,robin%Q_geo,robin%is_float)
+                                       robin%H_ice,robin%T_srf,robin%smb,robin%Q_geo,is_float=robin%f_grnd.eq.0.0)
 
     ! Write Robin solution 
     file1D = "robin.nc"
     call write_init(robin,filename=file1D,zeta=robin%vec%zeta,time_init=time)
     call write_step(robin,robin%vec,filename=file1D,time=time)
-
+    
     ! Initialize output file for model and write intial conditions 
     file1D = "test.nc"
     call write_init(ice1,filename=file1D,zeta=ice1%vec%zeta,time_init=time)
@@ -122,7 +123,7 @@ program test_icetemp
 
         call calc_temp_column(ice1%vec%T_ice,ice1%bmb,ice1%dTdz_b,ice1%vec%T_pmp,ice1%vec%cp,ice1%vec%kt, &
                                 ice1%vec%uz,ice1%vec%Q_strn,ice1%vec%advecxy,ice1%Q_b,ice1%Q_geo, &
-                                ice1%T_srf,ice1%H_ice,ice1%H_w,ice1%is_float,ice1%vec%zeta, &
+                                ice1%T_srf,ice1%T_shlf,ice1%H_ice,ice1%H_w,ice1%f_grnd,ice1%vec%zeta, &
                                 ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b,dt)
 
         ! Update basal water thickness 
@@ -171,14 +172,15 @@ contains
         nz_ac = nz - 1 
 
         ! Assign point values
-        ice%T_srf    = 239.0       ! [K] 
+        ice%T_srf    = 239.0       ! [K]
+        ice%T_shlf   = T0          ! [K] T_shlf not used in this idealized setup, set to T0  
         ice%smb      = smb         ! [m/a]
         ice%bmb      = 0.0         ! [m/a]
         ice%Q_geo    = 42.0        ! [mW/m2]
         ice%H_ice    = 2997.0      ! [m] Summit thickness
         ice%H_w      = 0.0         ! [m] No basal water
         ice%Q_b      = 0.0         ! [] No basal frictional heating 
-        ice%is_float = .FALSE.     ! Grounded point 
+        ice%f_grnd   = 1.0         ! Grounded point 
 
         ! EISMINT1
         ice%vec%cp      = 2009.0    ! [J kg-1 K-1]
@@ -191,7 +193,8 @@ contains
         ice%vec%T_pmp = calc_T_pmp(ice%H_ice,ice%vec%zeta,T0) 
 
         if (is_celcius) then 
-            ice%T_srf    = ice%T_srf    - T0
+            ice%T_srf     = ice%T_srf     - T0
+            ice%T_shlf    = ice%T_shlf    - T0
             ice%vec%T_pmp = ice%vec%T_pmp - T0 
         end if 
 
@@ -226,13 +229,14 @@ contains
 
         ! Assign point values
         ice%T_srf    = T0 - 30.0   ! [K]
+        ice%T_shlf   = T0          ! [K] T_shlf not used in this idealized setup, set to T0  
         ice%smb      = 0.0         ! [m/a]
         ice%bmb      = 0.0         ! [m/a]
         ice%Q_geo    = 42.0        ! [mW/m2]
         ice%H_ice    = 1000.0      ! [m] Summit thickness
         ice%H_w      = 0.0         ! [m] No basal water
         ice%Q_b      = 0.0         ! [] No basal frictional heating 
-        ice%is_float = .FALSE.     ! Grounded point 
+        ice%f_grnd   = 1.0         ! Grounded point 
 
         ! EISMINT1
         ice%vec%cp      = 2009.0    ! [J kg-1 K-1]
@@ -245,7 +249,8 @@ contains
         ice%vec%T_pmp = calc_T_pmp(ice%H_ice,ice%vec%zeta,T0) 
 
         if (is_celcius) then 
-            ice%T_srf    = ice%T_srf      - T0
+            ice%T_srf     = ice%T_srf     - T0
+            ice%T_shlf    = ice%T_shlf    - T0
             ice%vec%T_pmp = ice%vec%T_pmp - T0 
         end if 
 
@@ -419,10 +424,14 @@ contains
         call nc_write(filename,"T_srf",   ice%T_srf,units="K",long_name="Surface temperature",dim1="time",start=[n],ncid=ncid)
         call nc_write(filename,"H_ice",   ice%H_ice,units="m",long_name="Ice thickness",dim1="time",start=[n],ncid=ncid)
         call nc_write(filename,"H_w",     ice%H_w,units="m",long_name="Basal water thickness",dim1="time",start=[n],ncid=ncid)
-        call nc_write(filename,"is_float",ice%is_float,units="",long_name="Floating flag",dim1="time",start=[n],ncid=ncid)
+        call nc_write(filename,"f_grnd",  ice%f_grnd,units="1",long_name="Grounded fraction",dim1="time",start=[n],ncid=ncid)
         
         ! If available, compare with Robin analytical solution 
-        if (present(T_robin)) then 
+        if (present(T_robin)) then
+            call nc_write(filename,"T_robin",  T_robin,  units="K", &
+                            long_name="Ice temperature from Robin solution", &
+                            dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+         
             call nc_write(filename,"T_diff",  vecs%T_ice-T_robin,  units="K", &
                             long_name="Ice temperature difference with Robin solution", &
                             dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
@@ -489,5 +498,5 @@ contains
         return 
 
     end subroutine calc_zeta
-
+    
 end program test_icetemp 
