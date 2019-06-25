@@ -56,7 +56,6 @@ program test_icetemp
     logical            :: is_celcius 
     character(len=56)  :: age_method 
     real(prec)         :: age_impl_kappa
-    real(prec)         :: t_base
 
     ! ===============================================================
     ! User options 
@@ -70,7 +69,7 @@ program test_icetemp
 
     nz      = 25                ! [--] Number of ice sheet points (aa-nodes + base + surface)
 
-    smb     = 0.5               ! [m a-1] Surface mass balance 
+    smb     = 0.1               ! [m a-1] Surface mass balance 
 
     is_celcius = .FALSE. 
 
@@ -129,15 +128,12 @@ program test_icetemp
         ! Update basal water thickness 
         ice1%H_w = ice1%H_w - ice1%bmb*dt 
 
-        ! Age calculations 
-        t_base = ice1%vec%t_dep(1) 
-
         if (trim(age_method) .eq. "impl") then 
         call calc_tracer_column(ice1%vec%t_dep,ice1%vec%uz,ice1%vec%advecxy*0.0,time,ice1%bmb, &
                                 ice1%H_ice,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b, &
                                 ice1%age_impl_kappa,dt)
         else 
-        call calc_tracer_column_expl(ice1%vec%t_dep,ice1%vec%uz,ice1%vec%advecxy*0.0,time,t_base,ice1%H_ice,ice1%vec%zeta,ice1%vec%zeta_ac,dt)
+        call calc_tracer_column_expl(ice1%vec%t_dep,ice1%vec%uz,ice1%vec%advecxy*0.0,time,ice1%bmb,ice1%H_ice,ice1%vec%zeta,ice1%vec%zeta_ac,dt)
         end if 
 
         if (mod(time,dt_out)==0) then 
@@ -287,7 +283,7 @@ contains
         integer :: k, nz_ac 
 
         nz_ac = nz-1 
-        
+
         ! First allocate 'up' variables (with vertical coordinate as height)
 
         ! Make sure all vectors are deallocated

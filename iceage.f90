@@ -217,23 +217,7 @@ contains
         allocate(solution(nz_aa))
 
         ! Calculate basal mass balance including additional thinning term
-        bmb_tot = bmb + bmb_thinning 
-
-        ! Step 0: Apply basal boundary condition
-        if (bmb_tot .lt. 0.0) then 
-            ! Modify basal value explicitly for basal melting
-            ! using boundary condition of Rybak and Huybrechts (2003), Eq. 3
-            ! No horizontal advection of the basal value since it has no thickness 
-
-            dz = H_ice*(zeta_aa(2) - zeta_aa(1)) 
-            X_base = X_ice(1) - dt*bmb_tot*(X_ice(2)-X_ice(1))/dz 
-
-        else
-            ! Leave basal value unchanged 
-            X_base = X_ice(1)
-
-        end if 
-
+        call calc_X_base(X_base,X_ice,H_ice,bmb,bmb_thinning,zeta_aa,dt)
 
         ! Step 1: apply vertical advection (for explicit testing)
         if (test_expl_advecz) then 
@@ -312,7 +296,7 @@ contains
 
     end subroutine calc_tracer_column
 
-    subroutine calc_tracer_column_expl(X_ice,uz,advecxy,X_srf,X_base,H_ice,zeta_aa,zeta_ac,dt)
+    subroutine calc_tracer_column_expl(X_ice,uz,advecxy,X_srf,bmb,H_ice,zeta_aa,zeta_ac,dt)
         ! Tracer solver for a given column of ice 
         ! Note zeta=height, k=1 base, k=nz surface 
         ! Note: nz = number of vertical boundaries (including zeta=0.0 and zeta=1.0), 
@@ -327,7 +311,7 @@ contains
         real(prec), intent(IN)    :: uz(:)        ! nz_ac [m a-1] Vertical velocity 
         real(prec), intent(IN)    :: advecxy(:)   ! nz_aa [K a-1] Horizontal heat advection 
         real(prec), intent(IN)    :: X_srf        ! [units] Surface value
-        real(prec), intent(IN)    :: X_base       ! [units] Basal value
+        real(prec), intent(IN)    :: bmb          ! [m a-1] Basal mass balance value
         real(prec), intent(IN)    :: H_ice        ! [m] Ice thickness 
         real(prec), intent(IN)    :: zeta_aa(:)   ! nz_aa [--] Vertical sigma coordinates (zeta==height), layer centered aa-nodes
         real(prec), intent(IN)    :: zeta_ac(:)   ! nz_ac [--] Vertical sigma coordinates (zeta==height), layer boundary ac-nodes
@@ -335,11 +319,17 @@ contains
 
         ! Local variables 
         integer :: k, nz_aa
+        real(prec) :: X_base 
         real(prec), allocatable :: advecz(:)   ! nz_aa, for explicit vertical advection solving
+
+        real(prec), parameter :: bmb_thinning = 1e-3   ! [m a-1]
 
         nz_aa = size(zeta_aa,1)
         
         allocate(advecz(nz_aa))
+
+        ! Calculate basal mass balance including additional thinning term
+        call calc_X_base(X_base,X_ice,H_ice,bmb,bmb_thinning,zeta_aa,dt)
 
         ! Update base and surface values
         X_ice(1)     = X_base 
@@ -613,6 +603,45 @@ contains
         return 
 
     end subroutine calc_advec_vertical_column_new2
+
+    subroutine calc_X_base(X_base,X_ice,H_ice,bmb,bmb_thinning,zeta_aa,dt)
+        ! Calculate the basal boundary value of tracer 
+
+        implicit none 
+
+        real(prec), intent(OUT)   :: X_base
+        real(prec), intent(IN)    :: X_ice(:)  
+        real(prec), intent(IN)    :: H_ice
+        real(prec), intent(IN)    :: bmb 
+        real(prec), intent(IN)    :: bmb_thinning
+        real(prec), intent(IN)    :: zeta_aa(:) 
+        real(prec), intent(IN)    :: dt 
+
+        ! Local variables 
+        real(prec) :: bmb_tot 
+        real(prec) :: dz 
+
+        ! Calculate basal mass balance including additional thinning term
+        bmb_tot = bmb + bmb_thinning 
+
+        ! Step 0: Apply basal boundary condition
+        if (bmb_tot .le. 0.0) then 
+            ! Modify basal value explicitly for basal melting
+            ! using boundary condition of Rybak and Huybrechts (2003), Eq. 3
+            ! No horizontal advection of the basal value since it has no thickness 
+
+            dz = H_ice*(zeta_aa(2) - zeta_aa(1)) 
+            X_base = X_ice(1) - dt*bmb_tot*(X_ice(2)-X_ice(1))/dz 
+
+        else
+            ! Leave basal value unchanged 
+            X_base = X_ice(1)
+
+        end if 
+
+        return 
+
+    end subroutine calc_X_base 
 
     subroutine calc_advec_horizontal_column(advecxy,var_ice,ux,uy,dx,i,j)
         ! Newly implemented advection algorithms (ajr)
