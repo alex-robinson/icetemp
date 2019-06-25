@@ -61,6 +61,7 @@ contains
         real(prec) :: T_excess
         real(prec) :: melt_internal   
         real(prec) :: enth_b, enth_pmp_b 
+        real(prec) :: omega_excess
 
         logical, parameter      :: test_expl_advecz = .FALSE. 
         real(prec), allocatable :: advecz(:)   ! nz_aa, for explicit vertical advection solving
@@ -313,6 +314,21 @@ contains
             ! Set internal melt to zero 
             melt_internal = 0.0 
 
+            do k = nz_aa-1, 2, -1 
+                ! Descend from surface to base layer (center of layer)
+
+                ! Store excess water above maximum allowed limit
+                omega_excess = max(omega(k)-omega_max,0.0)
+
+                ! Calculate internal melt as sum of all excess water produced in the column 
+                if (omega_excess .gt. 0.0) then 
+                    dz = H_ice*(zeta_ac(k)-zeta_ac(k-1))
+                    melt_internal = melt_internal + (omega_excess*dz) / dt 
+                    omega(k)      = omega_max 
+                end if 
+
+            end do 
+
         else 
             ! Copy the solution into the temperature variable,
             ! recalculate enthalpy  
@@ -326,6 +342,9 @@ contains
             else 
                 Q_ice_b = 0.0  
             end if 
+            
+            ! Calculate basal mass balance (valid for grounded ice only)
+            call calc_bmb_grounded(bmb_grnd,T_ice(1)-T_pmp(1),Q_ice_b,Q_b,Q_geo_now,f_grnd,rho_ice)
             
             ! Now calculate internal melt (only allow melting, no accretion)
         
@@ -346,10 +365,6 @@ contains
                 
             end do 
 
-            
-            ! Calculate basal mass balance (valid for grounded ice only)
-            call calc_bmb_grounded(bmb_grnd,T_ice(1)-T_pmp(1),Q_ice_b,Q_b,Q_geo_now,f_grnd,rho_ice)
-            
             ! Make sure base is below pmp too (mass/energy balance handled via bmb_grnd calculation externally)
             if (T_ice(1) .gt. T_pmp(1)) T_ice(1) = T_pmp(1)
 
