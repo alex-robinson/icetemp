@@ -86,7 +86,7 @@ contains
 
         ! Calculate diffusivity on cell centers (aa-nodes)
         kappa_aa = kt / (rho_ice*cp)
-
+        
         ! Calculate gradient in kappa (centered on aa-nodes)
         dkappadz = 0.0 
         do k = 2, nz_aa-1 

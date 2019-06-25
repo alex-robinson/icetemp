@@ -81,7 +81,7 @@ program test_icetemp
     age_method     = "expl"     ! "expl" or "impl"
     age_impl_kappa = 1.5        ! [m2 a-1] Artificial diffusion for age tracing
 
-    use_enth       = .TRUE.     ! Use enthalpy solver? 
+    use_enth       = .TRUE.      ! Use enthalpy solver? 
     enth_nu        = 0.035       ! Enthalpy solver: water diffusivity, nu=0.035 kg m-1 a-1 in Greve and Blatter (2016)
 
     ! ===============================================================
@@ -141,7 +141,7 @@ program test_icetemp
 
             call calc_temp_column_enth(ice1%vec%T_ice,ice1%vec%omega,ice1%vec%enth,ice1%bmb,ice1%dTdz_b,ice1%vec%T_pmp,ice1%vec%cp,ice1%vec%kt, &
                         ice1%vec%uz,ice1%vec%Q_strn,ice1%vec%advecxy,ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%T_shlf,ice1%H_ice, &
-                        ice1%H_w,ice1%f_grnd,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b,dt,enth_nu)
+                        ice1%H_w,ice1%f_grnd,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b,enth_nu,dt)
 
         else 
             ! Use temperature solver 
