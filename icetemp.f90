@@ -13,7 +13,7 @@ module icetemp
 
 contains 
 
-    subroutine calc_temp_column(T_ice,bmb_grnd,dTdz_b,T_pmp,cp,ct,uz,Q_strn,advecxy,Q_b,Q_geo, &
+    subroutine calc_temp_column(T_ice,bmb_grnd,dTdz_b,T_pmp,cp,kt,uz,Q_strn,advecxy,Q_b,Q_geo, &
                     T_srf,T_shlf,H_ice,H_w,f_grnd,zeta_aa,zeta_ac,dzeta_a,dzeta_b,dt)
         ! Thermodynamics solver for a given column of ice 
         ! Note zeta=height, k=1 base, k=nz surface 
@@ -30,7 +30,7 @@ contains
         real(prec), intent(OUT)   :: dTdz_b       ! [K m-1] Basal temperature gradient
         real(prec), intent(IN)    :: T_pmp(:)     ! nz_aa [K] Pressure melting point temp.
         real(prec), intent(IN)    :: cp(:)        ! nz_aa [J kg-1 K-1] Specific heat capacity
-        real(prec), intent(IN)    :: ct(:)        ! nz_aa [J a-1 m-1 K-1] Heat conductivity 
+        real(prec), intent(IN)    :: kt(:)        ! nz_aa [J a-1 m-1 K-1] Heat conductivity 
         real(prec), intent(IN)    :: uz(:)        ! nz_ac [m a-1] Vertical velocity 
         real(prec), intent(IN)    :: Q_strn(:)    ! nz_aa [K a-1] Internal strain heat production in ice
         real(prec), intent(IN)    :: advecxy(:)   ! nz_aa [K a-1] Horizontal heat advection 
@@ -85,7 +85,7 @@ contains
         Q_geo_now = Q_geo*1e-3*sec_year   ! [mW m-2] => [J m-2 a-1]
 
         ! Calculate diffusivity on cell centers (aa-nodes)
-        kappa_aa = ct / (rho_ice*cp)
+        kappa_aa = kt / (rho_ice*cp)
 
         ! Calculate gradient in kappa (centered on aa-nodes)
         dkappadz = 0.0 
@@ -140,7 +140,7 @@ contains
                 subd(1) =  0.0_prec
                 diag(1) =  1.0_prec
                 supd(1) = -1.0_prec
-                rhs(1)  = (Q_b + Q_geo_now) * dzeta*H_ice / ct(1)
+                rhs(1)  = (Q_b + Q_geo_now) * dzeta*H_ice / kt(1)
                 
                 if (.FALSE.) then 
                     ! Alternative boundary condition approach - works, but needs testing and refinement 
@@ -148,12 +148,12 @@ contains
                 ! Convert units of Q_strn [J a-1 m-3] => [K a-1]
                 Q_strn_now = Q_strn(1)/(rho_ice*cp(1))
 
-                fac      = dt * ct(1) / (rho_ice*cp(1)) / H_ice**2
+                fac      = dt * kt(1) / (rho_ice*cp(1)) / H_ice**2
                
                 subd(1) =  0.0_prec
                 diag(1) =  1.0_prec  + fac/((zeta_ac(2)-zeta_ac(1))*(zeta_aa(2) - zeta_aa(1))  )     !mmr  1.0_prec
                 supd(1) =  -1.0_prec  * fac/((zeta_ac(2)-zeta_ac(1))*(zeta_aa(2) - zeta_aa(1))  )     !mmr -1.0_prec
-                rhs(1)  =  T_ice(1) + fac* ((Q_geo_now) * H_ice / ct(1)) * 1.0_prec/( (zeta_ac(2)-zeta_ac(1))) + Q_strn_now*dt   !+ uz(1) * (Q_b_now) *H*dt / (( zeta_aa(2)-zeta_aa(1) ) * ct(1) )    ! mmr (Q_b_now) * dzetaBot*H / ct(1)
+                rhs(1)  =  T_ice(1) + fac* ((Q_geo_now) * H_ice / kt(1)) * 1.0_prec/( (zeta_ac(2)-zeta_ac(1))) + Q_strn_now*dt   !+ uz(1) * (Q_b_now) *H*dt / (( zeta_aa(2)-zeta_aa(1) ) * kt(1) )    ! mmr (Q_b_now) * dzetaBot*H / kt(1)
                 
                 end if 
 
@@ -281,7 +281,7 @@ contains
         end if 
         
         ! Calculate basal mass balance (valid for grounded ice only)
-        call calc_bmb_grounded(bmb_grnd,T_ice(1)-T_pmp(1),dTdz_b,ct(1),rho_ice,Q_b,Q_geo_now,f_grnd)
+        call calc_bmb_grounded(bmb_grnd,T_ice(1)-T_pmp(1),dTdz_b,kt(1),rho_ice,Q_b,Q_geo_now,f_grnd)
 
         ! Include internal melting in bmb_grnd 
         bmb_grnd = bmb_grnd - melt_internal 

@@ -58,6 +58,10 @@ $(objdir)/icetemp.o : $(srcdir)/icetemp.f90 $(objdir)/defs.o \
 					  $(objdir)/solver_tridiagonal.o $(objdir)/thermodynamics.o
 	$(FC) $(DFLAGS) $(FFLAGS) -c -o $@ $<
 
+$(objdir)/iceenth.o : $(srcdir)/iceenth.f90 $(objdir)/defs.o \
+					  $(objdir)/solver_tridiagonal.o $(objdir)/thermodynamics.o
+	$(FC) $(DFLAGS) $(FFLAGS) -c -o $@ $<
+
 $(objdir)/iceage.o : $(srcdir)/iceage.f90 $(objdir)/defs.o \
 					  $(objdir)/solver_tridiagonal.o
 	$(FC) $(DFLAGS) $(FFLAGS) -c -o $@ $<
@@ -69,7 +73,7 @@ $(objdir)/iceage.o : $(srcdir)/iceage.f90 $(objdir)/defs.o \
 ###############################################
 
 test_icetemp : $(objdir)/ncio.o $(objdir)/defs.o $(objdir)/solver_tridiagonal.o \
-				$(objdir)/thermodynamics.o $(objdir)/icetemp.o $(objdir)/iceage.o
+				$(objdir)/thermodynamics.o $(objdir)/icetemp.o $(objdir)/iceenth.o $(objdir)/iceage.o
 		$(FC) $(DLAGS) $(FFLAGS) $(INC_COORD) $(INC_LIS) -o $(bindir)/test_icetemp.x test_icetemp.f90 \
 			$(LFLAGS) $^
 		@echo " "

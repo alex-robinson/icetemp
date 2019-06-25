@@ -4,7 +4,8 @@ program test_icetemp
     
     use defs
     use thermodynamics 
-    use icetemp 
+    use icetemp
+    use iceenth  
     use iceage 
 
     implicit none 
@@ -22,7 +23,8 @@ program test_icetemp
         real(prec), allocatable :: advecxy(:) ! [] Horizontal heat advection magnitude
         real(prec), allocatable :: Q_strn(:)  ! [K a-1] Strain heating 
         real(prec), allocatable :: t_dep(:)   ! [a] Deposition time 
-
+        real(prec), allocatable :: enth(:)    ! [J kg-1] Ice enthalpy
+        real(prec), allocatable :: omega(:)   ! [-] Ice water content (fraction)
     end type 
 
     type icesheet 
@@ -57,6 +59,8 @@ program test_icetemp
     logical            :: is_celcius 
     character(len=56)  :: age_method 
     real(prec)         :: age_impl_kappa
+    logical            :: use_enth 
+    real(prec)         :: enth_nu 
 
     ! ===============================================================
     ! User options 
@@ -76,6 +80,9 @@ program test_icetemp
 
     age_method     = "expl"     ! "expl" or "impl"
     age_impl_kappa = 1.5        ! [m2 a-1] Artificial diffusion for age tracing
+
+    use_enth       = .TRUE.     ! Use enthalpy solver? 
+    enth_nu        = 0.035       ! Enthalpy solver: water diffusivity, nu=0.035 kg m-1 a-1 in Greve and Blatter (2016)
 
     ! ===============================================================
 
@@ -99,11 +106,19 @@ program test_icetemp
     robin%vec%T_ice = calc_temp_robin_column(robin%vec%zeta,robin%vec%T_pmp,robin%vec%kt,robin%vec%cp,rho_ice, &
                                        robin%H_ice,robin%T_srf,robin%smb,robin%Q_geo,is_float=robin%f_grnd.eq.0.0)
 
+    ! Calculate initial enthalpy (ice1)
+    call convert_to_enthalpy_column(ice1%vec%enth,ice1%vec%T_ice,ice1%vec%omega,ice1%vec%T_pmp, &
+                                                                        ice1%vec%cp,rho_ice,rho_w,L_ice)
+
+    ! Calculate initial enthalpy (robin)
+    call convert_to_enthalpy_column(robin%vec%enth,robin%vec%T_ice,robin%vec%omega,robin%vec%T_pmp, &
+                                                                        robin%vec%cp,rho_ice,rho_w,L_ice)
+
     ! Write Robin solution 
     file1D = "robin.nc"
     call write_init(robin,filename=file1D,zeta=robin%vec%zeta,time_init=time)
     call write_step(robin,robin%vec,filename=file1D,time=time)
-    
+
     ! Initialize output file for model and write intial conditions 
     file1D = "test.nc"
     call write_init(ice1,filename=file1D,zeta=ice1%vec%zeta,time_init=time)
@@ -121,10 +136,22 @@ program test_icetemp
         !if (time .ge. 100e3) ice1%T_srf = T0 - 5.0 
         !if (time .ge. 150e3) ice1%T_srf = T0 - 30.0 
 
-        call calc_temp_column(ice1%vec%T_ice,ice1%bmb,ice1%dTdz_b,ice1%vec%T_pmp,ice1%vec%cp,ice1%vec%kt, &
-                                ice1%vec%uz,ice1%vec%Q_strn,ice1%vec%advecxy,ice1%Q_b,ice1%Q_geo, &
-                                ice1%T_srf,ice1%T_shlf,ice1%H_ice,ice1%H_w,ice1%f_grnd,ice1%vec%zeta, &
-                                ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b,dt)
+        if (use_enth) then 
+            ! Use enthalpy solver 
+
+            call calc_temp_column_enth(ice1%vec%T_ice,ice1%vec%omega,ice1%vec%enth,ice1%bmb,ice1%dTdz_b,ice1%vec%T_pmp,ice1%vec%cp,ice1%vec%kt, &
+                        ice1%vec%uz,ice1%vec%Q_strn,ice1%vec%advecxy,ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%T_shlf,ice1%H_ice, &
+                        ice1%H_w,ice1%f_grnd,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b,dt,enth_nu)
+
+        else 
+            ! Use temperature solver 
+
+            call calc_temp_column(ice1%vec%T_ice,ice1%bmb,ice1%dTdz_b,ice1%vec%T_pmp,ice1%vec%cp,ice1%vec%kt, &
+                                    ice1%vec%uz,ice1%vec%Q_strn,ice1%vec%advecxy,ice1%Q_b,ice1%Q_geo, &
+                                    ice1%T_srf,ice1%T_shlf,ice1%H_ice,ice1%H_w,ice1%f_grnd,ice1%vec%zeta, &
+                                    ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b,dt)
+
+        end if 
 
         ! Update basal water thickness 
         ice1%H_w = ice1%H_w - ice1%bmb*dt 
@@ -304,9 +331,11 @@ contains
         if (allocated(ice%vec%uz))      deallocate(ice%vec%uz)
         if (allocated(ice%vec%advecxy)) deallocate(ice%vec%advecxy)
         if (allocated(ice%vec%Q_strn))  deallocate(ice%vec%Q_strn)
-
         if (allocated(ice%vec%t_dep))   deallocate(ice%vec%t_dep)
 
+        if (allocated(ice%vec%enth))    deallocate(ice%vec%enth)
+        if (allocated(ice%vec%omega))   deallocate(ice%vec%omega)
+        
         ! Allocate vectors with desired lengths
         allocate(ice%vec%zeta(nz))
         allocate(ice%vec%zeta_ac(nz_ac))
@@ -317,12 +346,12 @@ contains
         allocate(ice%vec%T_pmp(nz))
         allocate(ice%vec%cp(nz))
         allocate(ice%vec%kt(nz))
+        allocate(ice%vec%uz(nz_ac))
         allocate(ice%vec%advecxy(nz))
         allocate(ice%vec%Q_strn(nz))
-
-        allocate(ice%vec%uz(nz_ac))
-        
         allocate(ice%vec%t_dep(nz))
+        allocate(ice%vec%enth(nz))
+        allocate(ice%vec%omega(nz))
 
         ! Initialize zeta 
         call calc_zeta(ice%vec%zeta,ice%vec%zeta_ac,zeta_scale,zeta_exp=2.0) 
@@ -350,8 +379,9 @@ contains
         ice%vec%uz      = 0.0
         ice%vec%advecxy = 0.0  
         ice%vec%Q_strn  = 0.0
-
         ice%vec%t_dep   = 0.0 
+        ice%vec%enth    = 0.0 
+        ice%vec%omega   = 0.0 
 
         write(*,*) "Allocated icesheet variables."
 
@@ -415,6 +445,9 @@ contains
         call nc_write(filename,"Q_strn", vecs%Q_strn, units="J a-1 m-3",long_name="Ice strain heating",      dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
         
         call nc_write(filename,"t_dep", vecs%t_dep, units="a",long_name="Deposition time",      dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        
+        call nc_write(filename,"enth",  vecs%enth,  units="J kg-1",   long_name="Ice enthalpy",           dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"omega", vecs%omega, units="",   long_name="Ice water content (fraction)", dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
         
         ! Update variables (points) 
         call nc_write(filename,"smb",     ice%smb,units="m a**-1",long_name="Surface mass balance",dim1="time",start=[n],ncid=ncid)
