@@ -34,9 +34,9 @@ program test_icetemp
         real(prec) :: T_shlf            ! [K] Ice shelf base temperature 
         real(prec) :: smb               ! [m a**-1] Surface mass balance
         real(prec) :: bmb               ! [m a**-1] Basal mass balance
-        real(prec) :: dTdz_b            ! [K m-1] Basal vertical temperature gradient 
+        real(prec) :: Q_ice_b           ! [J a-1 m-2] Ice basal heat flux (positive up)
         real(prec) :: Q_geo             ! [mW m-2] Geothermal heat flux 
-        real(prec) :: Q_b               ! [] Basal heat production
+        real(prec) :: Q_b               ! [J a-1 m-2] Basal heat production
         real(prec) :: f_grnd            ! [-] Grounded fraction 
         character(len=56) :: age_method ! Method to use for age calculation 
         real(prec) :: age_impl_kappa    ! [m2 a-1] Artificial diffusion term for implicit age solving 
@@ -61,16 +61,17 @@ program test_icetemp
     real(prec)         :: age_impl_kappa
     logical            :: use_enth 
     real(prec)         :: enth_nu 
+    character(len=56)  :: experiment 
 
     ! ===============================================================
     ! User options 
 
     t_start = 0.0       ! [yr]
-    t_end   = 500e3     ! [yr]
+    t_end   = 300e3     ! [yr]
     dt      = 5.0       ! [yr]
 
     file1D  = "test.nc" 
-    dt_out  = 10000.0           ! [yr] 
+    dt_out  = 500.0           ! [yr] 
 
     nz      = 25                ! [--] Number of ice sheet points (aa-nodes + base + surface)
 
@@ -84,6 +85,8 @@ program test_icetemp
     use_enth       = .TRUE.      ! Use enthalpy solver? 
     enth_nu        = 0.035       ! Enthalpy solver: water diffusivity, nu=0.035 kg m-1 a-1 in Greve and Blatter (2016)
 
+    experiment     = "k15expa"  ! "k15expa" or "eismint"
+
     ! ===============================================================
 
     ! Initialize time and calculate number of time steps to iterate and 
@@ -93,9 +96,18 @@ program test_icetemp
     ! Initialize icesheet object 
     call icesheet_allocate(ice1,nz=nz,zeta_scale="tanh") 
 
-    ! Prescribe initial eismint conditions for testing 
-    call init_eismint_summit(ice1,smb)
-    !call init_k15_expa(ice1)
+    select case(trim(experiment))
+
+        case("k15expa")
+
+            call init_k15_expa(ice1)
+
+        case DEFAULT 
+            ! EISMINT 
+
+            call init_eismint_summit(ice1,smb)
+
+    end select 
 
     ! Set age method and kappa 
     ice1%age_method     = age_method 
@@ -116,12 +128,12 @@ program test_icetemp
 
     ! Write Robin solution 
     file1D = "robin.nc"
-    call write_init(robin,filename=file1D,zeta=robin%vec%zeta,time_init=time)
+    call write_init(robin,filename=file1D,zeta=robin%vec%zeta,zeta_ac=robin%vec%zeta_ac,time_init=time)
     call write_step(robin,robin%vec,filename=file1D,time=time)
 
     ! Initialize output file for model and write intial conditions 
     file1D = "test.nc"
-    call write_init(ice1,filename=file1D,zeta=ice1%vec%zeta,time_init=time)
+    call write_init(ice1,filename=file1D,zeta=ice1%vec%zeta,zeta_ac=ice1%vec%zeta_ac,time_init=time)
     call write_step(ice1,ice1%vec,filename=file1D,time=time)
 
     ! Ensure zero basal water thickness to start 
@@ -133,20 +145,22 @@ program test_icetemp
         ! Get current time 
         time = t_start + n*dt 
 
-        !if (time .ge. 100e3) ice1%T_srf = T0 - 5.0 
-        !if (time .ge. 150e3) ice1%T_srf = T0 - 30.0 
+        if (trim(experiment) .eq. "k15expa") then 
+            if (time .ge. 100e3) ice1%T_srf = T0 - 5.0 
+            if (time .ge. 150e3) ice1%T_srf = T0 - 30.0 
+        end if 
 
         if (use_enth) then 
             ! Use enthalpy solver 
 
-            call calc_temp_column_enth(ice1%vec%T_ice,ice1%vec%omega,ice1%vec%enth,ice1%bmb,ice1%dTdz_b,ice1%vec%T_pmp,ice1%vec%cp,ice1%vec%kt, &
+            call calc_temp_column_enth(ice1%vec%T_ice,ice1%vec%omega,ice1%vec%enth,ice1%bmb,ice1%Q_ice_b,ice1%vec%T_pmp,ice1%vec%cp,ice1%vec%kt, &
                         ice1%vec%uz,ice1%vec%Q_strn,ice1%vec%advecxy,ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%T_shlf,ice1%H_ice, &
                         ice1%H_w,ice1%f_grnd,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b,enth_nu,dt)
 
         else 
             ! Use temperature solver 
 
-            call calc_temp_column(ice1%vec%T_ice,ice1%bmb,ice1%dTdz_b,ice1%vec%T_pmp,ice1%vec%cp,ice1%vec%kt, &
+            call calc_temp_column(ice1%vec%T_ice,ice1%bmb,ice1%Q_ice_b,ice1%vec%T_pmp,ice1%vec%cp,ice1%vec%kt, &
                                     ice1%vec%uz,ice1%vec%Q_strn,ice1%vec%advecxy,ice1%Q_b,ice1%Q_geo, &
                                     ice1%T_srf,ice1%T_shlf,ice1%H_ice,ice1%H_w,ice1%f_grnd,ice1%vec%zeta, &
                                     ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b,dt)
@@ -157,11 +171,11 @@ program test_icetemp
         ice1%H_w = ice1%H_w - ice1%bmb*dt 
 
         if (trim(age_method) .eq. "impl") then 
-        call calc_tracer_column(ice1%vec%t_dep,ice1%vec%uz,ice1%vec%advecxy*0.0,time,ice1%bmb, &
-                                ice1%H_ice,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b, &
-                                ice1%age_impl_kappa,dt)
+            call calc_tracer_column(ice1%vec%t_dep,ice1%vec%uz,ice1%vec%advecxy*0.0,time,ice1%bmb, &
+                                    ice1%H_ice,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b, &
+                                    ice1%age_impl_kappa,dt)
         else 
-        call calc_tracer_column_expl(ice1%vec%t_dep,ice1%vec%uz,ice1%vec%advecxy*0.0,time,ice1%bmb,ice1%H_ice,ice1%vec%zeta,ice1%vec%zeta_ac,dt)
+            call calc_tracer_column_expl(ice1%vec%t_dep,ice1%vec%uz,ice1%vec%advecxy*0.0,time,ice1%bmb,ice1%H_ice,ice1%vec%zeta,ice1%vec%zeta_ac,dt)
         end if 
 
         if (mod(time,dt_out)==0) then 
@@ -283,8 +297,13 @@ contains
 
         ! Define initial temperature profile
         ! (constant equal to surface temp)
-        ice%vec%T_ice = ice%T_srf 
-        where(ice%vec%T_ice .gt. T0) ice%vec%T_ice = T0 
+        if (is_celcius) then 
+            ice%vec%T_ice(nz) = ice%T_srf - T0
+            ice%vec%T_ice(1)  = ice%T_srf - T0 
+        else 
+            ice%vec%T_ice(nz) = ice%T_srf 
+            ice%vec%T_ice(1)  = ice%T_srf
+        end if 
 
         ! Intermediate layers are linearly interpolated 
         do k = 2, nz-1 
@@ -292,12 +311,8 @@ contains
         end do 
 
         ! Define linear vertical velocity profile
-        ice%vec%uz(nz) = -ice%smb 
-        ice%vec%uz(1)  = 0.0 
-        do k = 2, nz-1 
-            ice%vec%uz(k) = ice%vec%uz(1)+(ice%vec%zeta(k))*(ice%vec%uz(nz)-ice%vec%uz(1))
-        end do 
-        
+        ice%vec%uz = -ice%smb*ice%vec%zeta_ac 
+
         return 
 
     end subroutine init_k15_expa 
@@ -389,18 +404,20 @@ contains
 
     end subroutine icesheet_allocate 
 
-    subroutine write_init(ice,filename,zeta,time_init)
+    subroutine write_init(ice,filename,zeta,zeta_ac,time_init)
 
         implicit none 
 
         type(icesheet),   intent(IN) :: ice 
         character(len=*), intent(IN) :: filename 
         real(prec),       intent(IN) :: zeta(:)  
+        real(prec),       intent(IN) :: zeta_ac(:) 
         real(prec),       intent(IN) :: time_init
 
         ! Initialize netcdf file and dimensions
         call nc_create(filename)
-        call nc_write_dim(filename,"zeta",  x=zeta,    units="1")
+        call nc_write_dim(filename,"zeta",    x=zeta,    units="1")
+        call nc_write_dim(filename,"zeta_ac", x=zeta_ac, units="1")
         call nc_write_dim(filename,"time",  x=time_init,dx=1.0_prec,nx=1,units="years",unlimited=.TRUE.)
 
         return
@@ -440,7 +457,7 @@ contains
         
         call nc_write(filename,"cp",     vecs%cp,     units="J kg-1 K-1",   long_name="Ice heat capacity",       dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
         call nc_write(filename,"kt",     vecs%kt,     units="J a-1 m-1 K-1",long_name="Ice thermal conductivity",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
-        call nc_write(filename,"uz",     vecs%uz,     units="m a**-1",  long_name="Ice vertical velocity",   dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"uz",     vecs%uz,     units="m a**-1",  long_name="Ice vertical velocity",   dim1="zeta_ac",dim2="time",start=[1,n],ncid=ncid)
         call nc_write(filename,"advecxy",vecs%advecxy,units="",         long_name="Ice horizontal advection",dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
         call nc_write(filename,"Q_strn", vecs%Q_strn, units="J a-1 m-3",long_name="Ice strain heating",      dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
         

@@ -13,7 +13,7 @@ module icetemp
 
 contains 
 
-    subroutine calc_temp_column(T_ice,bmb_grnd,dTdz_b,T_pmp,cp,kt,uz,Q_strn,advecxy,Q_b,Q_geo, &
+    subroutine calc_temp_column(T_ice,bmb_grnd,Q_ice_b,T_pmp,cp,kt,uz,Q_strn,advecxy,Q_b,Q_geo, &
                     T_srf,T_shlf,H_ice,H_w,f_grnd,zeta_aa,zeta_ac,dzeta_a,dzeta_b,dt)
         ! Thermodynamics solver for a given column of ice 
         ! Note zeta=height, k=1 base, k=nz surface 
@@ -27,7 +27,7 @@ contains
 
         real(prec), intent(INOUT) :: T_ice(:)     ! nz_aa [K] Ice column temperature
         real(prec), intent(INOUT) :: bmb_grnd     ! [m a-1] Basal mass balance (melting is negative)
-        real(prec), intent(OUT)   :: dTdz_b       ! [K m-1] Basal temperature gradient
+        real(prec), intent(OUT)   :: Q_ice_b      ! [J a-1 m-2] Basal heat flux into ice (positive up)
         real(prec), intent(IN)    :: T_pmp(:)     ! nz_aa [K] Pressure melting point temp.
         real(prec), intent(IN)    :: cp(:)        ! nz_aa [J kg-1 K-1] Specific heat capacity
         real(prec), intent(IN)    :: kt(:)        ! nz_aa [J a-1 m-1 K-1] Heat conductivity 
@@ -86,7 +86,7 @@ contains
 
         ! Calculate diffusivity on cell centers (aa-nodes)
         kappa_aa = kt / (rho_ice*cp)
-        
+
         ! Calculate gradient in kappa (centered on aa-nodes)
         dkappadz = 0.0 
         do k = 2, nz_aa-1 
@@ -248,6 +248,14 @@ contains
         
         ! === Treat basal mass balance and high temperatures ===
         
+        ! Calculate heat flux at ice base as temperature gradient * conductivity [J a-1 m-2]
+        if (H_ice .gt. 0.0_prec) then 
+            dz = H_ice * (zeta_aa(2)-zeta_aa(1))
+            Q_ice_b = kt(1) * (T_ice(2) - T_ice(1)) / dz 
+        else 
+            Q_ice_b = 0.0  
+        end if 
+        
         ! First calculate internal melt (only allow melting, no accretion)
         
         melt_internal = 0.0 
@@ -272,16 +280,19 @@ contains
         if (T_ice(k) .gt. T_pmp(k)) T_ice(k) = T_pmp(k)
 
 
-        ! Get temperature gradient at ice base
-        if (H_ice .gt. 0.0_prec) then 
-            dz = H_ice * (zeta_aa(2)-zeta_aa(1))
-            dTdz_b = (T_ice(2) - T_ice(1)) / dz 
-        else 
-            dTdz_b = 0.0_prec 
-        end if 
-        
         ! Calculate basal mass balance (valid for grounded ice only)
-        call calc_bmb_grounded(bmb_grnd,T_ice(1)-T_pmp(1),dTdz_b,kt(1),rho_ice,Q_b,Q_geo_now,f_grnd)
+        call calc_bmb_grounded(bmb_grnd,T_ice(1)-T_pmp(1),Q_ice_b,Q_b,Q_geo_now,f_grnd,rho_ice)
+            
+!         ! Get temperature gradient at ice base
+!         if (H_ice .gt. 0.0_prec) then 
+!             dz = H_ice * (zeta_aa(2)-zeta_aa(1))
+!             dTdz_b = (T_ice(2) - T_ice(1)) / dz 
+!         else 
+!             dTdz_b = 0.0_prec 
+!         end if 
+        
+!         ! Calculate basal mass balance (valid for grounded ice only)
+!         call calc_bmb_grounded(bmb_grnd,T_ice(1)-T_pmp(1),dTdz_b,kt(1),rho_ice,Q_b,Q_geo_now,f_grnd)
 
         ! Include internal melting in bmb_grnd 
         bmb_grnd = bmb_grnd - melt_internal 
