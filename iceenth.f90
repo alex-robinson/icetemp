@@ -82,7 +82,7 @@ contains
         real(prec), allocatable :: var(:)       ! aa-nodes 
         
         real(prec), parameter :: omega_max = 0.01       ! [-] Maximum allowed water fraction inside ice 
-
+        
         nz_aa = size(zeta_aa,1)
         nz_ac = size(zeta_ac,1)
 
@@ -404,7 +404,7 @@ contains
         real(prec), intent(IN)  :: L_ice            ! [J kg-1] Latent heat of ice 
         
         enth = (1.0_prec-omega)*(rho_ice*cp*T_ice) + omega*(rho_w*(cp*T_pmp+L_ice))
-
+        
         return 
 
     end subroutine convert_to_enthalpy_column

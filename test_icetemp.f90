@@ -151,11 +151,11 @@ program test_icetemp
         time = t_start + n*dt 
 
         if (trim(experiment) .eq. "k15expa") then 
-            if (time .lt. 100e3) then 
+            if (time .le. 100e3) then 
                 ice1%T_srf = T0_ref - 30.0
-            else if (time .ge. 100e3 .and. time .lt. 150e3) then 
+            else if (time .gt. 100e3 .and. time .le. 150e3) then 
                 ice1%T_srf = T0_ref - 5.0 
-            else   ! time .ge. 150e3
+            else   ! time .gt. 150e3
                 ice1%T_srf = T0_ref - 30.0
             end if  
         end if 
@@ -177,8 +177,8 @@ program test_icetemp
 
         end if 
 
-        ! Update basal water thickness 
-        ice1%H_w = ice1%H_w - ice1%bmb*dt 
+        ! Update basal water thickness [m/a i.e.] => [m/a w.e.]
+        ice1%H_w = ice1%H_w - (ice1%bmb*rho_ice/rho_w)*dt 
 
         if (trim(age_method) .eq. "impl") then 
             call calc_tracer_column(ice1%vec%t_dep,ice1%vec%uz,ice1%vec%advecxy*0.0,time,ice1%bmb, &

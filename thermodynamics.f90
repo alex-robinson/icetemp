@@ -8,8 +8,8 @@ module thermodynamics
 
     implicit none 
 
-    real(prec), parameter :: L_ice = 3.35e5       ! Specific latent heat of fusion of ice [J Kg-1]
-!     real(prec), parameter :: L_ice = 3.34e5       ! Kleiner et al. (2015)
+!     real(prec), parameter :: L_ice = 3.35e5       ! Specific latent heat of fusion of ice [J Kg-1]
+    real(prec), parameter :: L_ice = 3.34e5       ! Kleiner et al. (2015)
     
     private  
 
@@ -101,19 +101,19 @@ contains
         ! Local variables
         real(prec) :: net_enth
         real(prec) :: Q_net  
-        real(prec), parameter :: tol = 1e-10  
+        real(prec), parameter :: tol = 1e-5  
         
         if (f_grnd .gt. 0.0) then 
             ! Grounded point 
 
+            ! Calculate enthalpy at the base relative to pressure melting point 
+            net_enth = enth_b - enth_pmp_b  
+
             ! Calculate net energy flux at the base [J a-1 m-2]
             Q_net = Q_b + Q_ice_b + Q_geo_now
-
-            ! Calculate enthalpy at the base relative to pressure melting point 
-            net_enth = enth_b - enth_pmp_b 
-
+            
             bmb_grnd = - Q_net /(rho_ice*L_ice - net_enth)
-
+            
         else 
             ! Floating point, no grounded bmb 
 
@@ -539,9 +539,9 @@ contains
         ! 1. Greve and Blatter (2009): beta1 = (beta*rho*g), beta=9.8e-8 [K Pa^-1]
         ! 2. EISMINT2 value 
         ! 3. Kleiner et al. (2015): beta1 = (beta*rho*g), beta=7.9e-8 [K Pa^-1]
-        real(prec), parameter :: beta1 = 8.74e-4    ! [K m^-1]   
+!         real(prec), parameter :: beta1 = 8.74e-4    ! [K m^-1]   
 !         real(prec), parameter :: beta1 = 8.66e-4    ! [K m^-1] 
-!         real(prec), parameter :: beta1 = 7.05e-4    ! [K m^-1] 
+        real(prec), parameter :: beta1 = 7.05e-4    ! [K m^-1] 
 
         ! Get thickness of ice above current point
         depth = H_ice*(1.0-zeta)

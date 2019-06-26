@@ -1,5 +1,7 @@
 library(myr)
 
+rho_ice = 910.0 
+rho_w   = 1000.0 
 
 
 # Load data 
@@ -11,6 +13,9 @@ if (TRUE) {
 
     dat = my.read.nc("test.nc")
     dat$time = dat$time*1e-3     # [a] => [ka]
+
+    # Calculate melt rate [m/a w.e.]
+    dat$bmb_we = dat$bmb*rho_ice/rho_w 
 
 }
 
@@ -61,7 +66,7 @@ if (TRUE) {
     axis(2,at=y.at)
     mtext(side=2,line=3.0,las=0,"Melt rate (mm a-1 w.e.)")
 
-    lines(dat$time,-dat$bmb*1e3,col=1,lwd=3)
+    lines(dat$time,-dat$bmb_we*1e3,col=1,lwd=3)
     
     # Kleiner et al. (2015) analytical solution from Fig. 2
     lines(k15a$time,k15a$ab,col=2,lwd=3)
@@ -70,7 +75,7 @@ if (TRUE) {
     
     # Panel 2: H_w #############################
     par(plt=c(0.12,0.95,0.20,0.95))
-    ylim = c(0,160)
+    ylim = c(-5,160)
 
     plot(xlim,ylim,type="n",ann=FALSE,axes=FALSE)
     y.at = pretty(ylim,10)
