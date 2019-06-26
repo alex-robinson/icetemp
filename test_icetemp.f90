@@ -61,7 +61,6 @@ program test_icetemp
     character(len=56)  :: age_method 
     real(prec)         :: age_impl_kappa
     logical            :: use_enth 
-    real(prec)         :: enth_nu 
     real(prec)         :: enth_cr
     character(len=56)  :: experiment 
 
@@ -73,16 +72,15 @@ program test_icetemp
     experiment     = "k15expb"      ! "eismint", "k15expa", "k15expb"
     
     ! General options
-    zeta_scale      = "tanh"        ! "linear", "exp", "tanh"
-    nz              = 21            ! [--] Number of ice sheet points (aa-nodes + base + surface)
-    is_celcius      = .TRUE. 
+    zeta_scale      = "linear"      ! "linear", "exp", "tanh"
+    nz              = 201           ! [--] Number of ice sheet points (aa-nodes + base + surface)
+    is_celcius      = .FALSE. 
 
     age_method      = "expl"        ! "expl" or "impl"
     age_impl_kappa  = 1.5           ! [m2 a-1] Artificial diffusion for age tracing
 
     use_enth        = .TRUE.        ! Use enthalpy solver? 
-    enth_nu         = 0.035         ! Enthalpy solver: water diffusivity, nu=0.035 kg m-1 a-1 in Greve and Blatter (2016)
-    enth_cr         = 1e-1          ! Enthalpy solver: conductivity ratio kappa_water / kappa_ice 
+    enth_cr         = 1e-3          ! Enthalpy solver: conductivity ratio kappa_water / kappa_ice 
 
     file1D          = "test.nc" 
     
@@ -110,9 +108,9 @@ program test_icetemp
         case("k15expb")
 
             t_start = 0.0       ! [yr]
-            t_end   = 50e3      ! [yr]
+            t_end   = 2e3       ! [yr]
             dt      = 5.0       ! [yr]
-            dt_out  = 1000.0    ! [yr] 
+            dt_out  = 200.0     ! [yr] 
 
             T_pmp_beta = 0.0            ! [K Pa^-1] Kleiner et al. (2015), expb
             
@@ -358,7 +356,7 @@ contains
 
         ! Local variables 
         integer :: k, nz 
-        real(prec) :: ATT, CR, K0, gamma   
+        real(prec) :: ATT, gamma   
         real(prec), allocatable :: ux(:)
         real(prec), allocatable :: uy(:)  
         real(prec), allocatable :: mu(:)
@@ -384,9 +382,6 @@ contains
 
         ATT             = 5.3e-24*sec_year      ! Rate factor
         gamma           = 4.0                   ! [degrees] Bed slope 
-        CR              = 1e-1                  ! Conductivity ratio 
-
-        K0              = (ice%vec%kt(1) / ice%vec%cp(1)) * CR    
 
         allocate(ux(nz))
         allocate(uy(nz))

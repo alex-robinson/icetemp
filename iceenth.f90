@@ -49,7 +49,6 @@ contains
         real(prec), intent(IN)    :: zeta_ac(:)     ! nz_ac [--] Vertical height axis temperature (0:1), layer edges ac-nodes
         real(prec), intent(IN)    :: dzeta_a(:)     ! nz_aa [--] Solver discretization helper variable ak
         real(prec), intent(IN)    :: dzeta_b(:)     ! nz_aa [--] Solver discretization helper variable bk
-!         real(prec), intent(IN)    :: nu             ! [kg m-1 a-1] Water diffusivity in temperate ice, nu=0.035 kg m-1 a-1 in Greve and Blatter (2016)
         real(prec), intent(IN)    :: cr             ! [--] Conductivity ratio (kappa_water / kappa_ice)
         real(prec), intent(IN)    :: T0             ! [K or degreesCelcius] Reference melting temperature  
         real(prec), intent(IN)    :: dt             ! [a] Time step 
@@ -83,7 +82,7 @@ contains
         real(prec), allocatable :: fac_enth(:)  ! aa-nodes 
         real(prec), allocatable :: var(:)       ! aa-nodes 
         
-        real(prec), parameter :: omega_max = 0.02       ! [-] Maximum allowed water fraction inside ice 
+        real(prec), parameter :: omega_max = 0.03       ! [-] Maximum allowed water fraction inside ice 
 
         nz_aa = size(zeta_aa,1)
         nz_ac = size(zeta_ac,1)
@@ -193,7 +192,7 @@ contains
                 ! Temperate at bed 
                 ! Hold basal temperature at pressure melting point
 
-                if (use_enth .and. abs(T_ice(2)-T_pmp(2)) .lt. 1e-3) then 
+                if (use_enth .and. T_ice(2) .ge. T_pmp(2)) then 
                     ! Layer above base is also temperate (with water likely present in the ice),
                     ! set basal enthalpy equal to enthalpy above (following MALIv6 implementation)
 
@@ -236,33 +235,12 @@ contains
             ! Convert units of Q_strn [J a-1 m-3] => [K a-1]
             Q_strn_now = Q_strn(k)/(rho_ice*cp(k))
 
-        if (.FALSE.) then 
-            ! Stagger kappa to the lower and upper ac-nodes
-
-            ! ac-node between k-1 and k 
-            if (k .eq. 2) then 
-                ! Bottom layer, kappa is kappa for now (later with bedrock kappa?)
-                kappa_a = kappa_aa(1)
-            else 
-                ! Weighted average between lower half and upper half of point k-1 to k 
-                dz1 = zeta_ac(k-1)-zeta_aa(k-1)
-                dz2 = zeta_aa(k)-zeta_ac(k-1)
-                kappa_a = (dz1*kappa_aa(k-1) + dz2*kappa_aa(k))/(dz1+dz2)
-            end if 
-
-            ! ac-node between k and k+1 
-
-            ! Weighted average between lower half and upper half of point k to k+1
-            dz1 = zeta_ac(k+1)-zeta_aa(k)
-            dz2 = zeta_aa(k+1)-zeta_ac(k+1)
-            kappa_b = (dz1*kappa_aa(k) + dz2*kappa_aa(k+1))/(dz1+dz2)
-
-        else 
-            ! ajr: simply use aa-node kappas for now
-            kappa_a = kappa_aa(k) 
-            kappa_b = kappa_a
-
-        end if 
+            ! Get kappa for the lower and upper ac-nodes 
+            ! Note: this is important to avoid mixing of kappa at the 
+            ! CTS height (kappa_lower = kappa_temperate; kappa_upper = kappa_cold)
+            ! See Blatter and Greve, 2015, Eq. 25. 
+            kappa_a = kappa_aa(k-1)
+            kappa_b = kappa_aa(k) 
 
             ! Vertical distance for centered difference advection scheme
             dz      =  H_ice*(zeta_aa(k+1)-zeta_aa(k-1))
@@ -318,6 +296,9 @@ contains
                 end if 
 
             end do 
+
+            ! Also limit basal omega to omega_max (even though it doesn't have thickness)
+            if (omega(1) .gt. omega_max) omega(1) = omega_max 
 
             ! Finally, get enthalpy again too (to be consistent with new omega) 
             call convert_to_enthalpy_column(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
@@ -438,34 +419,17 @@ contains
         ! Find pressure melting point enthalpy
         enth_pmp = T_pmp * rho_ice*cp
 
-        ! Basal layer 
-        if (enth(1) .ge. enth_pmp(1)) then   
-            ! Temperate ice: reset enthalpy == pressure melting point, 
-            ! and set basal temperature == pressure melting point
-            ! and water content to zero, since the
-            ! basal layer is infinitesimally small
+        ! Ice interior and basal layer
+        ! Note: although the k=1 is a boundary value with no thickness,
+        ! allow it to retain omega to maintain consistency with grid points above.
+        do k = 1, nz_aa-1
 
-            enth(1)  = enth_pmp(1)
-            T_ice(1) = T_pmp(1)
-            omega(1) = 0.0_prec 
-            
-         else
-            ! Cold ice
-
-            T_ice(1) = enth(1) / (rho_ice*cp(1))
-            omega(1) = 0.0_prec 
-
-         endif
-
-        ! Ice interior
-        do k = 2, nz_aa-1
-
-            if (enth(k) .ge. enth_pmp(k)) then
+            if (enth(k) .gt. enth_pmp(k)) then
                 ! Temperate ice 
                 
                 T_ice(k) = T_pmp(k)
                 omega(k) = (enth(k) - enth_pmp(k)) / ((rho_w-rho_ice)*cp(k)*T_pmp(k)+rho_w*L_ice)
-
+                
              else
                 ! Cold ice 
 
@@ -558,7 +522,7 @@ contains
         real(prec)  :: kappa_temp       ! Temperate diffusivity 
         real(prec), allocatable :: enth_temp(:) 
         
-        logical, parameter :: use_harmonic_avg = .TRUE. 
+        logical, parameter :: use_harmonic_avg = .FALSE. 
 
         nz_aa = size(enth)
 
@@ -678,7 +642,6 @@ contains
             H_cts = H_ice * (zeta(k0) + f_lin*(zeta(k)-zeta(k0)))
 
         end if 
-
 
         return 
 
