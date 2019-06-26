@@ -14,8 +14,8 @@ module iceenth
 
 contains 
 
-    subroutine calc_temp_column_enth(T_ice,omega,enth,bmb_grnd,Q_ice_b,T_pmp,cp,kt,uz,Q_strn,advecxy,Q_b,Q_geo, &
-                    T_srf,T_shlf,H_ice,H_w,f_grnd,zeta_aa,zeta_ac,dzeta_a,dzeta_b,nu,T0,dt)
+    subroutine calc_temp_column_enth(T_ice,omega,enth,bmb_grnd,Q_ice_b,H_cts,T_pmp,cp,kt,uz,Q_strn,advecxy,Q_b,Q_geo, &
+                    T_srf,T_shlf,H_ice,H_w,f_grnd,zeta_aa,zeta_ac,dzeta_a,dzeta_b,cr,T0,dt)
         ! Thermodynamics solver for a given column of ice 
         ! Note zeta=height, k=1 base, k=nz surface 
         ! Note: nz = number of vertical boundaries (including zeta=0.0 and zeta=1.0), 
@@ -31,6 +31,7 @@ contains
         real(prec), intent(INOUT) :: enth(:)        ! nz_aa [J m-3] Ice column enthalpy
         real(prec), intent(INOUT) :: bmb_grnd       ! [m a-1] Basal mass balance (melting is negative)
         real(prec), intent(OUT)   :: Q_ice_b        ! [J a-1 m-2] Ice basal heat flux (positive up)
+        real(prec), intent(OUT)   :: H_cts          ! [m] cold-temperate transition surface (CTS) height
         real(prec), intent(IN)    :: T_pmp(:)       ! nz_aa [K] Pressure melting point temp.
         real(prec), intent(IN)    :: cp(:)          ! nz_aa [J kg-1 K-1] Specific heat capacity
         real(prec), intent(IN)    :: kt(:)          ! nz_aa [J a-1 m-1 K-1] Heat conductivity 
@@ -48,7 +49,8 @@ contains
         real(prec), intent(IN)    :: zeta_ac(:)     ! nz_ac [--] Vertical height axis temperature (0:1), layer edges ac-nodes
         real(prec), intent(IN)    :: dzeta_a(:)     ! nz_aa [--] Solver discretization helper variable ak
         real(prec), intent(IN)    :: dzeta_b(:)     ! nz_aa [--] Solver discretization helper variable bk
-        real(prec), intent(IN)    :: nu             ! [kg m-1 a-1] Water diffusivity in temperate ice, nu=0.035 kg m-1 a-1 in Greve and Blatter (2016)
+!         real(prec), intent(IN)    :: nu             ! [kg m-1 a-1] Water diffusivity in temperate ice, nu=0.035 kg m-1 a-1 in Greve and Blatter (2016)
+        real(prec), intent(IN)    :: cr             ! [--] Conductivity ratio (kappa_water / kappa_ice)
         real(prec), intent(IN)    :: T0             ! [K or degreesCelcius] Reference melting temperature  
         real(prec), intent(IN)    :: dt             ! [a] Time step 
         
@@ -82,7 +84,7 @@ contains
         real(prec), allocatable :: var(:)       ! aa-nodes 
         
         real(prec), parameter :: omega_max = 0.01       ! [-] Maximum allowed water fraction inside ice 
-        
+
         nz_aa = size(zeta_aa,1)
         nz_ac = size(zeta_ac,1)
 
@@ -113,7 +115,7 @@ contains
             ! Use enthalpy as prognostic variable 
 
             ! Calculate diffusivity on cell centers (aa-nodes)
-            call calc_enth_diffusivity(kappa_aa,T_ice,omega,enth,T_pmp,cp,kt,rho_ice,rho_w,L_ice,nu)
+            call calc_enth_diffusivity(kappa_aa,T_ice,omega,enth,T_pmp,cp,kt,rho_ice,rho_w,L_ice,cr)
 
             !kappa_aa = kt / (rho_ice*cp)
             !write(*,*) "kappa_aa: ", minval(kappa_aa), maxval(kappa_aa)
@@ -380,9 +382,12 @@ contains
             
         end if 
         
-
         ! Include internal melting in bmb_grnd 
         bmb_grnd = bmb_grnd - melt_internal 
+
+
+        ! Finally, calculate the CTS height 
+        H_cts = calc_cts_height(enth,T_pmp,cp,H_ice,rho_ice,zeta_aa)
 
         return 
 
@@ -491,7 +496,7 @@ contains
 
     end subroutine convert_from_enthalpy_column
 
-    subroutine calc_enth_diffusivity(kappa,T_ice,omega,enth,T_pmp,cp,kt,rho_ice,rho_w,L_ice,nu)
+    subroutine calc_enth_diffusivity(kappa,T_ice,omega,enth,T_pmp,cp,kt,rho_ice,rho_w,L_ice,cr)
         ! Calculate the enthalpy vertical diffusivity for use
         ! with the thermodynamics solver 
 
@@ -543,7 +548,7 @@ contains
         real(prec), intent(IN)  :: rho_ice
         real(prec), intent(IN)  :: rho_w
         real(prec), intent(IN)  :: L_ice
-        real(prec), intent(IN)  :: nu 
+        real(prec), intent(IN)  :: cr 
 
         ! Local variables
         integer     :: k, nz_aa  
@@ -576,7 +581,8 @@ contains
 
             ! Determine kappa_cold and kappa_temp for this level 
             kappa_cold = kt(k) / (rho_ice*cp(k))
-            kappa_temp = nu / rho_ice 
+            !kappa_temp = nu / rho_ice 
+            kappa_temp = cr * kappa_cold 
 
             if (k .lt. nz_aa) then 
                 denth      = enth(k+1) - enth(k)
@@ -623,6 +629,54 @@ contains
         return 
 
     end subroutine calc_enth_diffusivity
+
+    function calc_cts_height(enth,T_pmp,cp,H_ice,rho_ice,zeta) result(H_cts)
+
+        implicit none 
+
+        real(prec), intent(IN) :: enth(:) 
+        real(prec), intent(IN) :: T_pmp(:) 
+        real(prec), intent(IN) :: cp(:)
+        real(prec), intent(IN) :: H_ice 
+        real(prec), intent(IN) :: rho_ice 
+        real(prec), intent(IN) :: zeta(:) 
+        real(prec) :: H_cts 
+
+        ! Local variables 
+        integer :: k, k0, nz 
+        real(prec), allocatable :: enth_pmp(:) 
+
+        nz = size(enth,1) 
+
+        allocate(enth_pmp(nz))
+
+        ! Get enthalpy at the pressure melting point (no water content)
+        enth_pmp = T_pmp * rho_ice*cp
+
+        ! Determine index of the first layer that has enthalpy below enth_pmp 
+        do k = 1, nz 
+            if (enth(k) .lt. enth_pmp(k)) exit 
+        end do 
+        
+        ! Perform linear interpolation 
+        if (k .gt. nz) then 
+            ! Whole column is temperate
+            H_cts = H_ice
+        else if (k .eq. 1) then 
+            ! Whole column is cold 
+            H_cts = 0.0 
+        else 
+            ! Perform interpolation <== just assign previous layer for now (last layer with enth=enth_pmp)
+            k0 = k-1 
+            H_cts = H_ice*zeta(k0)
+
+        end if 
+
+
+        return 
+
+
+    end function calc_cts_height 
 
     subroutine calc_dzeta_terms(dzeta_a,dzeta_b,zeta_aa,zeta_ac)
         ! zeta_aa  = depth axis at layer centers (plus base and surface values)

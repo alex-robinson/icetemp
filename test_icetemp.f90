@@ -35,6 +35,7 @@ program test_icetemp
         real(prec) :: smb               ! [m a**-1] Surface mass balance
         real(prec) :: bmb               ! [m a**-1] Basal mass balance
         real(prec) :: Q_ice_b           ! [J a-1 m-2] Ice basal heat flux (positive up)
+        real(prec) :: H_cts             ! [m] cold-temperate transition surface (CTS) height
         real(prec) :: Q_geo             ! [mW m-2] Geothermal heat flux 
         real(prec) :: Q_b               ! [J a-1 m-2] Basal heat production
         real(prec) :: f_grnd            ! [-] Grounded fraction 
@@ -60,6 +61,7 @@ program test_icetemp
     real(prec)         :: age_impl_kappa
     logical            :: use_enth 
     real(prec)         :: enth_nu 
+    real(prec)         :: enth_cr
     character(len=56)  :: experiment 
 
     real(prec)         :: T0_ref 
@@ -78,6 +80,7 @@ program test_icetemp
 
     use_enth        = .TRUE.        ! Use enthalpy solver? 
     enth_nu         = 0.035         ! Enthalpy solver: water diffusivity, nu=0.035 kg m-1 a-1 in Greve and Blatter (2016)
+    enth_cr         = 1e-2          ! Enthalpy solver: conductivity ratio kappa_water / kappa_ice 
 
     file1D          = "test.nc" 
     
@@ -162,6 +165,9 @@ program test_icetemp
     ! Ensure zero basal water thickness to start 
     ice1%H_w = 0.0 
 
+    ! Assume H_cts is also zero to start
+    ice1%H_cts = 0.0 
+
     ! Loop over time steps and perform thermodynamic calculations
     do n = 1, ntot 
 
@@ -181,9 +187,9 @@ program test_icetemp
         if (use_enth) then 
             ! Use enthalpy solver 
 
-            call calc_temp_column_enth(ice1%vec%T_ice,ice1%vec%omega,ice1%vec%enth,ice1%bmb,ice1%Q_ice_b,ice1%vec%T_pmp,ice1%vec%cp,ice1%vec%kt, &
-                        ice1%vec%uz,ice1%vec%Q_strn,ice1%vec%advecxy,ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%T_shlf,ice1%H_ice, &
-                        ice1%H_w,ice1%f_grnd,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b,enth_nu,T0_ref,dt)
+            call calc_temp_column_enth(ice1%vec%T_ice,ice1%vec%omega,ice1%vec%enth,ice1%bmb,ice1%Q_ice_b,ice1%H_cts,ice1%vec%T_pmp, &
+                        ice1%vec%cp,ice1%vec%kt,ice1%vec%uz,ice1%vec%Q_strn,ice1%vec%advecxy,ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%T_shlf, &
+                        ice1%H_ice,ice1%H_w,ice1%f_grnd,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b,enth_cr,T0_ref,dt)
 
         else 
             ! Use temperature solver 
@@ -573,6 +579,7 @@ contains
         
         call nc_write(filename,"enth",  vecs%enth,  units="J kg-1",   long_name="Ice enthalpy",           dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
         call nc_write(filename,"omega", vecs%omega, units="",   long_name="Ice water content (fraction)", dim1=vert_dim,dim2="time",start=[1,n],ncid=ncid)
+        call nc_write(filename,"H_cts",  ice%H_cts, units="m",long_name="CTS height",dim1="time",start=[n],ncid=ncid)
         
         ! Update variables (points) 
         call nc_write(filename,"smb",     ice%smb,units="m a**-1",long_name="Surface mass balance",dim1="time",start=[n],ncid=ncid)
