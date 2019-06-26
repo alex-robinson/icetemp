@@ -114,9 +114,6 @@ contains
             ! Calculate diffusivity on cell centers (aa-nodes)
             call calc_enth_diffusivity(kappa_aa,T_ice,omega,enth,T_pmp,cp,kt,rho_ice,rho_w,L_ice,cr)
 
-            !kappa_aa = kt / (rho_ice*cp)
-            !write(*,*) "kappa_aa: ", minval(kappa_aa), maxval(kappa_aa)
-
             fac_enth = rho_ice*cp       ! To scale to units of [J m-3]
             var      = enth             ! [J m-3]
 
@@ -228,8 +225,8 @@ contains
             ! Note: this is important to avoid mixing of kappa at the 
             ! CTS height (kappa_lower = kappa_temperate; kappa_upper = kappa_cold)
             ! See Blatter and Greve, 2015, Eq. 25. 
-            kappa_a = kappa_aa(k-1)
-            kappa_b = kappa_aa(k) 
+            kappa_a = kappa_aa(k)
+            kappa_b = kappa_aa(k+1) 
 
             ! Vertical distance for centered difference advection scheme
             dz      =  H_ice*(zeta_aa(k+1)-zeta_aa(k-1))
