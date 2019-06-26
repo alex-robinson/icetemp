@@ -1,4 +1,4 @@
-module iceage
+module ice_age
     ! Module to treat online age calculations 
 
     use defs, only : prec
@@ -768,5 +768,5 @@ contains
 
     end function interp_linear_pt 
 
-end module iceage 
+end module ice_age 
 

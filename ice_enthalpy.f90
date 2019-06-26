@@ -1,4 +1,4 @@
-module iceenth 
+module ice_enthalpy 
     ! Module contains the ice temperature and basal mass balance (grounded) solution
 
     use defs, only : prec, pi, g, sec_year, rho_ice, rho_sw, rho_w, L_ice  
@@ -8,13 +8,13 @@ module iceenth
     implicit none
     
     private
-    public :: calc_temp_column_enth 
+    public :: calc_enth_column 
     public :: convert_to_enthalpy_column
     public :: convert_from_enthalpy_column
 
 contains 
 
-    subroutine calc_temp_column_enth(T_ice,omega,enth,bmb_grnd,Q_ice_b,H_cts,T_pmp,cp,kt,uz,Q_strn,advecxy,Q_b,Q_geo, &
+    subroutine calc_enth_column(T_ice,omega,enth,bmb_grnd,Q_ice_b,H_cts,T_pmp,cp,kt,uz,Q_strn,advecxy,Q_b,Q_geo, &
                     T_srf,T_shlf,H_ice,H_w,f_grnd,zeta_aa,zeta_ac,dzeta_a,dzeta_b,cr,T0,dt,solver)
         ! Thermodynamics solver for a given column of ice 
         ! Note zeta=height, k=1 base, k=nz surface 
@@ -359,7 +359,7 @@ contains
 
         return 
 
-    end subroutine calc_temp_column_enth
+    end subroutine calc_enth_column
 
     ! ========== ENTHALPY ==========================================
 
@@ -663,6 +663,6 @@ contains
 
     end subroutine calc_dzeta_terms
 
-end module iceenth
+end module ice_enthalpy
 
 

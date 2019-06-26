@@ -1,4 +1,4 @@
-module icetemp 
+module ice_temperature 
     ! Module contains the ice temperature and basal mass balance (grounded) solution
 
     use defs, only : prec, pi, g, sec_year, T0, rho_ice, rho_sw, rho_w, L_ice  
@@ -335,6 +335,6 @@ contains
 
     end subroutine calc_dzeta_terms
 
-end module icetemp
+end module ice_temperature
 
 
