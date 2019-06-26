@@ -10,11 +10,10 @@ if (TRUE) {
     experiment = "k15expb"
     is_celcius = FALSE 
 
-    k15a = read.table("data/Kleiner2015_FIg2_EXPA-IIIa-melt.txt",header=TRUE)
+    
+    filename = paste0("test_",experiment,".nc")
 
-
-
-    dat = my.read.nc("test.nc")
+    dat = my.read.nc(filename)
     dat$time = dat$time*1e-3     # [a] => [ka]
 
     # Calculate melt rate [m/a w.e.]
@@ -26,10 +25,12 @@ if (TRUE) {
         dat$T_ice   = dat$T_ice   - T0 
         dat$T_pmp   = dat$T_pmp   - T0 
         dat$T_srf   = dat$T_srf   - T0 
-        dat$T_robin = dat$T_robin - T0 
-        
-           
+        dat$T_robin = dat$T_robin - T0     
     }
+
+    # Read data for comparison 
+    k15a = read.table("data/Kleiner2015_FIg2_EXPA-IIIa-melt.txt",header=TRUE)
+
 }
 
 fldr  = "plots"

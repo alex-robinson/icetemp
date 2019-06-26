@@ -82,9 +82,9 @@ program test_icetemp
 
     use_enth        = .TRUE.        ! Use iceenth subroutines? If not, use icetemp subroutines. 
     enth_solver     = "enth"        ! "enth" or "temp" 
-    enth_cr         = 1e-3          ! Enthalpy solver: conductivity ratio kappa_water / kappa_ice 
+    enth_cr         = 1e-2          ! Enthalpy solver: conductivity ratio kappa_water / kappa_ice 
 
-    file1D          = "test.nc" 
+    file1D          = "test_"//trim(experiment)//".nc" 
     
     ! ===============================================================
 
@@ -110,8 +110,8 @@ program test_icetemp
         case("k15expb")
 
             t_start = 0.0       ! [yr]
-            t_end   = 2e3       ! [yr]
-            dt      = 5.0       ! [yr]
+            t_end   = 10e3       ! [yr]
+            dt      = 0.5       ! [yr]
             dt_out  = 200.0     ! [yr] 
 
             T_pmp_beta = 0.0            ! [K Pa^-1] Kleiner et al. (2015), expb
@@ -154,13 +154,12 @@ program test_icetemp
     call convert_to_enthalpy_column(robin%vec%enth,robin%vec%T_ice,robin%vec%omega,robin%vec%T_pmp, &
                                                                         robin%vec%cp,rho_ice,rho_w,L_ice)
 
-    ! Write Robin solution 
-    file1D = "robin.nc"
-    call write_init(robin,filename=file1D,zeta=robin%vec%zeta,zeta_ac=robin%vec%zeta_ac,time_init=time)
-    call write_step(robin,robin%vec,filename=file1D,time=time)
+!     ! Write Robin solution 
+!     file1D = "robin.nc"
+!     call write_init(robin,filename=file1D,zeta=robin%vec%zeta,zeta_ac=robin%vec%zeta_ac,time_init=time)
+!     call write_step(robin,robin%vec,filename=file1D,time=time)
 
     ! Initialize output file for model and write intial conditions 
-    file1D = "test.nc"
     call write_init(ice1,filename=file1D,zeta=ice1%vec%zeta,zeta_ac=ice1%vec%zeta_ac,time_init=time)
     call write_step(ice1,ice1%vec,filename=file1D,time=time)
 

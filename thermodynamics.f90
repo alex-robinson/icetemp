@@ -530,7 +530,6 @@ contains
 
         ! Local variables
         real(prec) :: depth
-        real(prec) :: beta1 
 
 !         real(prec), parameter :: beta = 9.8e-8 [K Pa^-1]      ! Greve and Blatter (2009) 
 !         real(prec), parameter :: beta = 9.7e-8 [K Pa^-1]      ! EISMINT2 value (beta1 = 8.66e-4 [K m^-1])
@@ -541,7 +540,7 @@ contains
 
         ! Calculate the pressure-corrected melting point
         T_pmp = T0 - (beta*rho_ice*g)*depth
-
+        
         return 
 
     end function calc_T_pmp 

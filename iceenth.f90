@@ -416,7 +416,7 @@ contains
                 
                 T_ice(k) = T_pmp(k)
                 omega(k) = (enth(k) - enth_pmp(k)) / ((rho_w-rho_ice)*cp(k)*T_pmp(k)+rho_w*L_ice)
-                
+
              else
                 ! Cold ice 
 
@@ -515,12 +515,8 @@ contains
 
         allocate(enth_temp(nz_aa))
 
-        ! First, define enthalpy associated with temperature only 
-        enth_temp(1)     = enth(1)
-        do k = 2, nz_aa-1
-            enth_temp(k) = (1.0_prec-omega(k))*rho_ice*cp(k)*T_ice(k)
-        end do
-        enth_temp(nz_aa) = enth(nz_aa)
+        ! First, define enthalpy associated with temperature only for the whole column 
+        enth_temp = (1.0_prec-omega)*rho_ice*cp*T_ice
       
         ! Compute factors relating the temperature gradient to the total enthalpy gradient.
         ! Use these factors to average the diffusivity between adjacent temperature points.
@@ -532,7 +528,6 @@ contains
 
             ! Determine kappa_cold and kappa_temp for this level 
             kappa_cold = kt(k) / (rho_ice*cp(k))
-            !kappa_temp = nu / rho_ice 
             kappa_temp = cr * kappa_cold 
 
             if (k .lt. nz_aa) then 
@@ -542,7 +537,7 @@ contains
                 denth      = enth(k) - enth(k-1)
                 denth_temp = enth_temp(k) - enth_temp(k-1)   ! = denth in cold ice, < denth in temperate ice
             end if 
-
+            
             if (abs(denth) .lt. 1e-10_prec*rho_w*L_ice .and. T_ice(k) .lt. T_pmp(k)) then 
                 ! Cold ice, no gradient, assign fraction for cold ice diffusion 
                 f_avg = 1.0 
@@ -572,7 +567,7 @@ contains
                 ! This gives faster cooling of temperate layers and smaller gradients
             
                 kappa(k) = f_avg*kappa_cold + (1.0_prec - f_avg)*kappa_temp
-         
+                
             end if
 
         end do
