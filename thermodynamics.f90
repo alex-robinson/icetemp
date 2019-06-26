@@ -9,7 +9,8 @@ module thermodynamics
     implicit none 
 
     real(prec), parameter :: L_ice = 3.35e5       ! Specific latent heat of fusion of ice [J Kg-1]
-
+!     real(prec), parameter :: L_ice = 3.34e5       ! Kleiner et al. (2015)
+    
     private  
 
     public :: calc_bmb_grounded
@@ -108,7 +109,7 @@ contains
             ! Calculate net energy flux at the base [J a-1 m-2]
             Q_net = Q_b + Q_ice_b + Q_geo_now
 
-            ! Calculate net enthalpy at the base 
+            ! Calculate enthalpy at the base relative to pressure melting point 
             net_enth = enth_b - enth_pmp_b 
 
             bmb_grnd = - Q_net /(rho_ice*L_ice - net_enth)
@@ -530,10 +531,18 @@ contains
         real(prec) :: T_pmp              ! [K] Pressure corrected melting point
 
         ! Local variables
-        real(prec) :: depth   
-        real(prec), parameter :: beta1 = 8.74e-4    ! [K m^-1]   beta1 = (beta*rho*g), beta=9.8e-8 [K Pa^-1]
-        !real(prec), parameter :: beta1 = 8.66e-4    ! [K m^-1]   EISMINT2 value
-        
+        real(prec) :: depth
+
+        ! beta1, the slope of the correction with depth has various values in the literature,
+        ! however, in most cases, this value makes no change to the results. Three values are
+        ! available below from the following references:
+        ! 1. Greve and Blatter (2009): beta1 = (beta*rho*g), beta=9.8e-8 [K Pa^-1]
+        ! 2. EISMINT2 value 
+        ! 3. Kleiner et al. (2015): beta1 = (beta*rho*g), beta=7.9e-8 [K Pa^-1]
+        real(prec), parameter :: beta1 = 8.74e-4    ! [K m^-1]   
+!         real(prec), parameter :: beta1 = 8.66e-4    ! [K m^-1] 
+!         real(prec), parameter :: beta1 = 7.05e-4    ! [K m^-1] 
+
         ! Get thickness of ice above current point
         depth = H_ice*(1.0-zeta)
 

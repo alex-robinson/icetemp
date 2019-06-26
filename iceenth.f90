@@ -1,7 +1,7 @@
 module iceenth 
     ! Module contains the ice temperature and basal mass balance (grounded) solution
 
-    use defs, only : prec, pi, g, sec_year, T0, rho_ice, rho_sw, rho_w, L_ice  
+    use defs, only : prec, pi, g, sec_year, rho_ice, rho_sw, rho_w, L_ice  
     use solver_tridiagonal, only : solve_tridiag 
     use thermodynamics, only : calc_bmb_grounded, calc_bmb_grounded_enth, calc_advec_vertical_column
 
@@ -15,7 +15,7 @@ module iceenth
 contains 
 
     subroutine calc_temp_column_enth(T_ice,omega,enth,bmb_grnd,Q_ice_b,T_pmp,cp,kt,uz,Q_strn,advecxy,Q_b,Q_geo, &
-                    T_srf,T_shlf,H_ice,H_w,f_grnd,zeta_aa,zeta_ac,dzeta_a,dzeta_b,nu,dt)
+                    T_srf,T_shlf,H_ice,H_w,f_grnd,zeta_aa,zeta_ac,dzeta_a,dzeta_b,nu,T0,dt)
         ! Thermodynamics solver for a given column of ice 
         ! Note zeta=height, k=1 base, k=nz surface 
         ! Note: nz = number of vertical boundaries (including zeta=0.0 and zeta=1.0), 
@@ -49,6 +49,7 @@ contains
         real(prec), intent(IN)    :: dzeta_a(:)     ! nz_aa [--] Solver discretization helper variable ak
         real(prec), intent(IN)    :: dzeta_b(:)     ! nz_aa [--] Solver discretization helper variable bk
         real(prec), intent(IN)    :: nu             ! [kg m-1 a-1] Water diffusivity in temperate ice, nu=0.035 kg m-1 a-1 in Greve and Blatter (2016)
+        real(prec), intent(IN)    :: T0             ! [K or degreesCelcius] Reference melting temperature  
         real(prec), intent(IN)    :: dt             ! [a] Time step 
         
         logical                 :: use_enth 
@@ -164,7 +165,7 @@ contains
             ! Grounded ice 
 
             ! Determine expected basal water thickness [m] for this timestep,
-            ! using basal mass balance from previous time step (rough guess)
+            ! using basal mass balance from previous time step (good guess)
             H_w_predicted = H_w - (bmb_grnd*(rho_w/rho_ice))*dt 
 
             ! == Assign grounded basal boundary conditions ==
@@ -298,19 +299,6 @@ contains
             ! Get temperature and water content 
             call convert_from_enthalpy_column(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
             
-            ! Calculate heat flux at ice base as enthalpy gradient * diffusivity [J a-1 m-2]
-            if (H_ice .gt. 0.0_prec) then 
-                dz = H_ice * (zeta_aa(2)-zeta_aa(1))
-                Q_ice_b = kappa_aa(1) * (enth(2) - enth(1)) / dz
-            else
-                Q_ice_b = 0.0 
-            end if 
-
-            ! Calculate basal mass balance 
-            enth_b     = enth(1)
-            enth_pmp_b = T_pmp(1) * fac_enth(1)
-            call calc_bmb_grounded_enth(bmb_grnd,enth_b,enth_pmp_b,Q_ice_b,Q_b,Q_geo_now,f_grnd,rho_ice)
-
             ! Set internal melt to zero 
             melt_internal = 0.0 
 
@@ -329,23 +317,28 @@ contains
 
             end do 
 
+            ! Finally, get enthalpy again too (to be consistent with new omega) 
+            call convert_to_enthalpy_column(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
+
+            ! Calculate heat flux at ice base as enthalpy gradient * diffusivity [J a-1 m-2]
+            if (H_ice .gt. 0.0_prec) then 
+                dz = H_ice * (zeta_aa(2)-zeta_aa(1))
+                Q_ice_b = kappa_aa(1) * (enth(2) - enth(1)) / dz
+            else
+                Q_ice_b = 0.0 
+            end if 
+
+            ! Calculate basal mass balance 
+            enth_b     = enth(1)
+            enth_pmp_b = T_pmp(1) * fac_enth(1)
+            call calc_bmb_grounded_enth(bmb_grnd,enth_b,enth_pmp_b,Q_ice_b,Q_b,Q_geo_now,f_grnd,rho_ice)
+            
         else 
             ! Copy the solution into the temperature variable,
             ! recalculate enthalpy  
 
             T_ice = solution 
 
-            ! Calculate heat flux at ice base as temperature gradient * conductivity [J a-1 m-2]
-            if (H_ice .gt. 0.0_prec) then 
-                dz = H_ice * (zeta_aa(2)-zeta_aa(1))
-                Q_ice_b = kt(1) * (T_ice(2) - T_ice(1)) / dz 
-            else 
-                Q_ice_b = 0.0  
-            end if 
-            
-            ! Calculate basal mass balance (valid for grounded ice only)
-            call calc_bmb_grounded(bmb_grnd,T_ice(1)-T_pmp(1),Q_ice_b,Q_b,Q_geo_now,f_grnd,rho_ice)
-            
             ! Now calculate internal melt (only allow melting, no accretion)
         
             melt_internal = 0.0 
@@ -374,6 +367,17 @@ contains
             ! Finally, get enthalpy too 
             call convert_to_enthalpy_column(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
 
+            ! Calculate heat flux at ice base as temperature gradient * conductivity [J a-1 m-2]
+            if (H_ice .gt. 0.0_prec) then 
+                dz = H_ice * (zeta_aa(2)-zeta_aa(1))
+                Q_ice_b = kt(1) * (T_ice(2) - T_ice(1)) / dz 
+            else 
+                Q_ice_b = 0.0  
+            end if 
+            
+            ! Calculate basal mass balance (valid for grounded ice only)
+            call calc_bmb_grounded(bmb_grnd,T_ice(1)-T_pmp(1),Q_ice_b,Q_b,Q_geo_now,f_grnd,rho_ice)
+            
         end if 
         
 
@@ -430,7 +434,7 @@ contains
         enth_pmp = T_pmp * rho_ice*cp
 
         ! Basal layer 
-        if (enth(1) >= enth_pmp(1)) then   
+        if (enth(1) .ge. enth_pmp(1)) then   
             ! Temperate ice: reset enthalpy == pressure melting point, 
             ! and set basal temperature == pressure melting point
             ! and water content to zero, since the
@@ -451,7 +455,7 @@ contains
         ! Ice interior
         do k = 2, nz_aa-1
 
-            if (enth(k) >= enth_pmp(k)) then
+            if (enth(k) .ge. enth_pmp(k)) then
                 ! Temperate ice 
                 
                 T_ice(k) = T_pmp(k)
@@ -468,7 +472,7 @@ contains
         end do 
 
         ! Surface layer 
-        if (enth(nz_aa) >= enth_pmp(nz_aa)) then 
+        if (enth(nz_aa) .ge. enth_pmp(nz_aa)) then 
             ! Temperate surface, reset omega to zero and enth to pmp value 
             
             enth(nz_aa)  = enth_pmp(nz_aa)
@@ -483,7 +487,6 @@ contains
         
         end if 
         
-
         return 
 
     end subroutine convert_from_enthalpy_column

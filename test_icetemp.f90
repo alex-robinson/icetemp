@@ -63,6 +63,8 @@ program test_icetemp
     real(prec)         :: enth_nu 
     character(len=56)  :: experiment 
 
+    real(prec)         :: T0_ref 
+
     ! ===============================================================
     ! User options 
 
@@ -77,7 +79,7 @@ program test_icetemp
 
     smb     = 0.5               ! [m a-1] Surface mass balance 
 
-    is_celcius = .FALSE. 
+    is_celcius = .TRUE. 
 
     age_method     = "expl"     ! "expl" or "impl"
     age_impl_kappa = 1.5        ! [m2 a-1] Artificial diffusion for age tracing
@@ -88,6 +90,9 @@ program test_icetemp
     experiment     = "k15expa"  ! "k15expa" or "eismint"
 
     ! ===============================================================
+
+    T0_ref = T0 
+    if (is_celcius) T0_ref = 0.0 
 
     ! Initialize time and calculate number of time steps to iterate and 
     time = t_start 
@@ -146,8 +151,13 @@ program test_icetemp
         time = t_start + n*dt 
 
         if (trim(experiment) .eq. "k15expa") then 
-            if (time .ge. 100e3) ice1%T_srf = T0 - 5.0 
-            if (time .ge. 150e3) ice1%T_srf = T0 - 30.0 
+            if (time .lt. 100e3) then 
+                ice1%T_srf = T0_ref - 30.0
+            else if (time .ge. 100e3 .and. time .lt. 150e3) then 
+                ice1%T_srf = T0_ref - 5.0 
+            else   ! time .ge. 150e3
+                ice1%T_srf = T0_ref - 30.0
+            end if  
         end if 
 
         if (use_enth) then 
@@ -155,7 +165,7 @@ program test_icetemp
 
             call calc_temp_column_enth(ice1%vec%T_ice,ice1%vec%omega,ice1%vec%enth,ice1%bmb,ice1%Q_ice_b,ice1%vec%T_pmp,ice1%vec%cp,ice1%vec%kt, &
                         ice1%vec%uz,ice1%vec%Q_strn,ice1%vec%advecxy,ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%T_shlf,ice1%H_ice, &
-                        ice1%H_w,ice1%f_grnd,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b,enth_nu,dt)
+                        ice1%H_w,ice1%f_grnd,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b,enth_nu,T0_ref,dt)
 
         else 
             ! Use temperature solver 
@@ -269,22 +279,22 @@ contains
         nz    = size(ice%vec%zeta)
 
         ! Assign point values
-        ice%T_srf    = T0 - 30.0   ! [K]
-        ice%T_shlf   = T0          ! [K] T_shlf not used in this idealized setup, set to T0  
-        ice%smb      = 0.0         ! [m/a]
-        ice%bmb      = 0.0         ! [m/a]
-        ice%Q_geo    = 42.0        ! [mW/m2]
-        ice%H_ice    = 1000.0      ! [m] Summit thickness
-        ice%H_w      = 0.0         ! [m] No basal water
-        ice%Q_b      = 0.0         ! [] No basal frictional heating 
-        ice%f_grnd   = 1.0         ! Grounded point 
+        ice%T_srf    = T0 - 30.0        ! [K]
+        ice%T_shlf   = T0               ! [K] T_shlf not used in this idealized setup, set to T0  
+        ice%smb      = 0.0              ! [m/a]
+        ice%bmb      = 0.0              ! [m/a]
+        ice%Q_geo    = 42.0             ! [mW/m2]
+        ice%H_ice    = 1000.0           ! [m] Summit thickness
+        ice%H_w      = 0.0              ! [m] No basal water
+        ice%Q_b      = 0.0              ! [] No basal frictional heating 
+        ice%f_grnd   = 1.0              ! Grounded point 
 
         ! EISMINT1
-        ice%vec%cp      = 2009.0    ! [J kg-1 K-1]
-        ice%vec%kt      = 6.67e7    ! [J a-1 m-1 K-1]
+        ice%vec%cp      = 2009.0        ! [J kg-1 K-1]
+        ice%vec%kt      = 6.6269e7      ! [J a-1 m-1 K-1]   == 2.1*sec_year  [J s-1 m-1 K-1] => J a-1 m-1 K-1]
         
-        ice%vec%Q_strn  = 0.0       ! [] No internal strain heating 
-        ice%vec%advecxy = 0.0       ! [] No horizontal advection 
+        ice%vec%Q_strn  = 0.0           ! [] No internal strain heating 
+        ice%vec%advecxy = 0.0           ! [] No horizontal advection 
 
         ! Calculate pressure melting point 
         ice%vec%T_pmp = calc_T_pmp(ice%H_ice,ice%vec%zeta,T0) 
@@ -297,13 +307,8 @@ contains
 
         ! Define initial temperature profile
         ! (constant equal to surface temp)
-        if (is_celcius) then 
-            ice%vec%T_ice(nz) = ice%T_srf - T0
-            ice%vec%T_ice(1)  = ice%T_srf - T0 
-        else 
-            ice%vec%T_ice(nz) = ice%T_srf 
-            ice%vec%T_ice(1)  = ice%T_srf
-        end if 
+        ice%vec%T_ice(nz) = ice%T_srf 
+        ice%vec%T_ice(1)  = ice%T_srf
 
         ! Intermediate layers are linearly interpolated 
         do k = 2, nz-1 
