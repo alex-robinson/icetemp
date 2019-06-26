@@ -14,7 +14,7 @@ module ice_enthalpy
 
 contains 
 
-    subroutine calc_enth_column(T_ice,omega,enth,bmb_grnd,Q_ice_b,H_cts,T_pmp,cp,kt,uz,Q_strn,advecxy,Q_b,Q_geo, &
+    subroutine calc_enth_column(enth,T_ice,omega,bmb_grnd,Q_ice_b,H_cts,T_pmp,cp,kt,uz,Q_strn,advecxy,Q_b,Q_geo, &
                     T_srf,T_shlf,H_ice,H_w,f_grnd,zeta_aa,zeta_ac,dzeta_a,dzeta_b,cr,T0,dt,solver)
         ! Thermodynamics solver for a given column of ice 
         ! Note zeta=height, k=1 base, k=nz surface 
@@ -26,9 +26,9 @@ contains
         
         implicit none 
 
+        real(prec), intent(INOUT) :: enth(:)        ! nz_aa [J m-3] Ice column enthalpy
         real(prec), intent(INOUT) :: T_ice(:)       ! nz_aa [K] Ice column temperature
         real(prec), intent(INOUT) :: omega(:)       ! nz_aa [-] Ice column water content fraction
-        real(prec), intent(INOUT) :: enth(:)        ! nz_aa [J m-3] Ice column enthalpy
         real(prec), intent(INOUT) :: bmb_grnd       ! [m a-1] Basal mass balance (melting is negative)
         real(prec), intent(OUT)   :: Q_ice_b        ! [J a-1 m-2] Ice basal heat flux (positive up)
         real(prec), intent(OUT)   :: H_cts          ! [m] cold-temperate transition surface (CTS) height
@@ -103,6 +103,9 @@ contains
         Q_geo_now = Q_geo*1e-3*sec_year   ! [mW m-2] => [J m-2 a-1]
 
         ! Get enthalpy to have enth, omega and T_ice all defined and consistent initially
+        ! Note: in principle, these quantities should all be available and consistent
+        ! when entering the routine, but it ensures that enthalpy is defined if only 
+        ! T_ice and omega are known initially.
         call convert_to_enthalpy_column(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
 
         ! Step 0: Calculate diffusivity, set prognostic variable (T_ice or enth),
@@ -364,6 +367,7 @@ contains
     ! ========== ENTHALPY ==========================================
 
     elemental subroutine convert_to_enthalpy_column(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
+        ! Given temperature and water content, calculate enthalpy.
 
         implicit none 
 
@@ -383,6 +387,7 @@ contains
     end subroutine convert_to_enthalpy_column
 
     subroutine convert_from_enthalpy_column(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
+        ! Given enthalpy, calculate temperature and water content. 
 
         implicit none 
 
@@ -447,13 +452,12 @@ contains
     end subroutine convert_from_enthalpy_column
 
     subroutine calc_enth_diffusivity(kappa,T_ice,omega,enth,T_pmp,cp,kt,rho_ice,rho_w,L_ice,cr)
-        ! Calculate the enthalpy vertical diffusivity for use
-        ! with the thermodynamics solver 
-
-        implicit none 
-
+        ! Calculate the enthalpy vertical diffusivity for use with the diffusion solver 
+        ! Note: this routine was ported from MALIv6 (Hoffman et al., 2018), 
+        ! which appears to have been ported from CISMv2.1. It appears that
+        ! using the Harmonic averaging or simple mean gives comparable results.
         !--------------------------------------------------------------------
-        ! Comments from MPAS-landice (MALI, Hoffman et al., 2018): 
+        ! Comments from MPAS-landice subroutine: 
         !
         ! Compute the enthalpy diffusivity at layer interfaces.
         ! Let d(enth)/dz = the gradient of enthalpy
@@ -484,9 +488,8 @@ contains
         !  smoother gradients.
         ! Currently (as of Oct. 2015), the arithmetic average is the default.
         !--------------------------------------------------------------------
-        !
-        ! At each temperature point, compute the temperature part of the enthalpy.
-        ! Note: enthalpyTemp = enthalpy for cold ice, enthalpyTemp < enthalpy for temperate ice
+
+        implicit none 
 
         real(prec), intent(OUT) :: kappa(:)         ! [nz_aa]
         real(prec), intent(IN)  :: T_ice(:)         ! [nz_aa]
@@ -515,12 +518,12 @@ contains
         allocate(enth_temp(nz_aa))
 
         ! First, define enthalpy associated with temperature only for the whole column 
+        ! (for cold ice enth = enth_temp, while for temperate ice enth > enth_temp) 
         enth_temp = (1.0_prec-omega)*rho_ice*cp*T_ice
       
         ! Compute factors relating the temperature gradient to the total enthalpy gradient.
-        ! Use these factors to average the diffusivity between adjacent temperature points.
-        ! aa-nodes vertically 
-        
+        ! Use these factors to average the diffusivity between the cold and temperate kappa values.
+
         kappa = 0.0 
 
         do k = 1, nz_aa
@@ -576,6 +579,8 @@ contains
     end subroutine calc_enth_diffusivity
 
     function calc_cts_height(enth,T_pmp,cp,H_ice,rho_ice,zeta) result(H_cts)
+        ! Calculate the height of the cold-temperate transition surface (m)
+        ! within the ice sheet. 
 
         implicit none 
 
