@@ -53,7 +53,7 @@ contains
         real(prec), intent(IN)    :: T0             ! [K or degreesCelcius] Reference melting temperature  
         real(prec), intent(IN)    :: dt             ! [a] Time step 
         
-        logical                 :: use_enth 
+        logical                   :: use_enth 
         
         ! Local variables 
         integer    :: k, nz_aa, nz_ac
@@ -68,37 +68,34 @@ contains
         logical, parameter      :: test_expl_advecz = .FALSE. 
         real(prec), allocatable :: advecz(:)   ! nz_aa, for explicit vertical advection solving
         
-        real(prec), allocatable :: kappa_aa(:)
-        real(prec), allocatable :: dkappadz(:)
+        real(prec), allocatable :: fac_enth(:)  ! aa-nodes 
+        real(prec), allocatable :: var(:)       ! aa-nodes 
+        real(prec), allocatable :: kappa_aa(:)  ! aa-nodes
 
-        real(prec), allocatable :: subd(:)     ! nz_aa 
-        real(prec), allocatable :: diag(:)     ! nz_aa  
-        real(prec), allocatable :: supd(:)     ! nz_aa 
-        real(prec), allocatable :: rhs(:)      ! nz_aa 
-        real(prec), allocatable :: solution(:) ! nz_aa
+        real(prec), allocatable :: subd(:)      ! nz_aa 
+        real(prec), allocatable :: diag(:)      ! nz_aa  
+        real(prec), allocatable :: supd(:)      ! nz_aa 
+        real(prec), allocatable :: rhs(:)       ! nz_aa 
+        real(prec), allocatable :: solution(:)  ! nz_aa
         real(prec) :: fac, fac_a, fac_b, uz_aa, dzeta, dz, dz1, dz2  
         real(prec) :: kappa_a, kappa_b, dza, dzb 
 
-        real(prec), allocatable :: fac_enth(:)  ! aa-nodes 
-        real(prec), allocatable :: var(:)       ! aa-nodes 
-        
         real(prec), parameter :: omega_max = 0.03       ! [-] Maximum allowed water fraction inside ice 
 
         nz_aa = size(zeta_aa,1)
         nz_ac = size(zeta_ac,1)
 
         allocate(kappa_aa(nz_aa))
-        allocate(dkappadz(nz_aa))
-        
+        allocate(fac_enth(nz_aa))
+        allocate(var(nz_aa))
+
         allocate(subd(nz_aa))
         allocate(diag(nz_aa))
         allocate(supd(nz_aa))
         allocate(rhs(nz_aa))
         allocate(solution(nz_aa))
 
-        allocate(fac_enth(nz_aa))
-        allocate(var(nz_aa))
-
+        
         ! Get geothermal heat flux in proper units 
         Q_geo_now = Q_geo*1e-3*sec_year   ! [mW m-2] => [J m-2 a-1]
 
@@ -132,12 +129,6 @@ contains
             var      = T_ice            ! [K]
 
         end if 
-
-        ! Calculate gradient in kappa (centered on aa-nodes)
-        dkappadz = 0.0 
-        do k = 2, nz_aa-1 
-            dkappadz(k) = (kappa_aa(k+1)-kappa_aa(k-1))/(zeta_aa(k+1)-zeta_aa(k-1))
-        end do 
 
         ! Step 1: Apply vertical advection (for explicit testing)
         if (test_expl_advecz) then 
@@ -228,9 +219,6 @@ contains
                 uz_aa   = 0.5*(uz(k-1)+uz(k))   ! ac => aa nodes
 
             end if 
-
-            ! Add 'vertical advection' due to the gradient in kappa 
-            !uz_aa = uz_aa + dkappadz(k)
 
             ! Convert units of Q_strn [J a-1 m-3] => [K a-1]
             Q_strn_now = Q_strn(k)/(rho_ice*cp(k))
