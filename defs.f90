@@ -50,6 +50,11 @@ module defs
     real(prec), parameter :: rho_m    = 2000.0       ! [kg m-3] Density mantle (lithosphere)
     real(prec), parameter :: L_ice    = 333500.0     ! [J kg-1] Latent heat
 
+    real(prec) :: T_pmp_beta 
+!         real(prec), parameter :: T_pmp_beta = 9.8e-8 [K Pa^-1]      ! Greve and Blatter (2009) 
+!         real(prec), parameter :: T_pmp_beta = 9.7e-8 [K Pa^-1]      ! EISMINT2 value (beta1 = 8.66e-4 [K m^-1])
+!         real(prec), parameter :: T_pmp_beta = 7.9e-8 [K Pa^-1]      ! Kleiner et al. (2015), expa
+
     public   ! All defs are public
 
 contains 

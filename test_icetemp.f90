@@ -54,8 +54,7 @@ program test_icetemp
     integer            :: n, ntot 
     character(len=512) :: file1D 
     real(prec)         :: dt_out 
-    integer            :: nz
-    real(prec)         :: smb 
+    integer            :: nz 
     logical            :: is_celcius 
     character(len=56)  :: age_method 
     real(prec)         :: age_impl_kappa
@@ -68,36 +67,25 @@ program test_icetemp
     ! ===============================================================
     ! User options 
 
-    t_start = 0.0       ! [yr]
-    t_end   = 300e3     ! [yr]
-    dt      = 5.0       ! [yr]
+    experiment     = "k15expb"      ! "eismint", "k15expa", "k15expb"
+    
+    ! General options
+    nz              = 25            ! [--] Number of ice sheet points (aa-nodes + base + surface)
+    is_celcius      = .TRUE. 
 
-    file1D  = "test.nc" 
-    dt_out  = 500.0           ! [yr] 
+    age_method      = "expl"        ! "expl" or "impl"
+    age_impl_kappa  = 1.5           ! [m2 a-1] Artificial diffusion for age tracing
 
-    nz      = 25                ! [--] Number of ice sheet points (aa-nodes + base + surface)
+    use_enth        = .TRUE.        ! Use enthalpy solver? 
+    enth_nu         = 0.035         ! Enthalpy solver: water diffusivity, nu=0.035 kg m-1 a-1 in Greve and Blatter (2016)
 
-    smb     = 0.5               ! [m a-1] Surface mass balance 
-
-    is_celcius = .TRUE. 
-
-    age_method     = "expl"     ! "expl" or "impl"
-    age_impl_kappa = 1.5        ! [m2 a-1] Artificial diffusion for age tracing
-
-    use_enth       = .TRUE.      ! Use enthalpy solver? 
-    enth_nu        = 0.035       ! Enthalpy solver: water diffusivity, nu=0.035 kg m-1 a-1 in Greve and Blatter (2016)
-
-    experiment     = "k15expa"  ! "k15expa" or "eismint"
-
+    file1D          = "test.nc" 
+    
     ! ===============================================================
 
     T0_ref = T0 
     if (is_celcius) T0_ref = 0.0 
 
-    ! Initialize time and calculate number of time steps to iterate and 
-    time = t_start 
-    ntot = (t_end-t_start)/dt 
-    
     ! Initialize icesheet object 
     call icesheet_allocate(ice1,nz=nz,zeta_scale="tanh") 
 
@@ -105,15 +93,45 @@ program test_icetemp
 
         case("k15expa")
 
+            t_start = 0.0       ! [yr]
+            t_end   = 300e3     ! [yr]
+            dt      = 5.0       ! [yr]
+            dt_out  = 500.0     ! [yr] 
+
+            T_pmp_beta = 7.9e-8         ! [K Pa^-1] Kleiner et al. (2015), expa
+
             call init_k15_expa(ice1)
+
+        case("k15expb")
+
+            t_start = 0.0       ! [yr]
+            t_end   = 10e3      ! [yr]
+            dt      = 5.0       ! [yr]
+            dt_out  = 1000.0    ! [yr] 
+
+            T_pmp_beta = 0.0            ! [K Pa^-1] Kleiner et al. (2015), expb
+            
+            call init_k15_expb(ice1)
 
         case DEFAULT 
             ! EISMINT 
 
-            call init_eismint_summit(ice1,smb)
+            t_start = 0.0       ! [yr]
+            t_end   = 100e3     ! [yr]
+            dt      = 5.0       ! [yr]
+            dt_out  = 1000.0    ! [yr] 
+
+            !T_pmp_beta = 9.8e-8         ! [K Pa^-1] Greve and Blatter (2009) 
+            T_pmp_beta = 9.7e-8         ! [K Pa^-1] EISMINT2 value (beta1 = 8.66e-4 [K m^-1])
+
+            call init_eismint_summit(ice1,smb=0.5)
 
     end select 
 
+    ! Initialize time and calculate number of time steps to iterate and 
+    time = t_start 
+    ntot = (t_end-t_start)/dt 
+    
     ! Set age method and kappa 
     ice1%age_method     = age_method 
     ice1%age_impl_kappa = age_impl_kappa
@@ -241,7 +259,7 @@ contains
         ice%vec%advecxy = 0.0       ! [] No horizontal advection 
 
         ! Calculate pressure melting point 
-        ice%vec%T_pmp = calc_T_pmp(ice%H_ice,ice%vec%zeta,T0) 
+        ice%vec%T_pmp = calc_T_pmp(ice%H_ice,ice%vec%zeta,T0,T_pmp_beta) 
 
         if (is_celcius) then 
             ice%T_srf     = ice%T_srf     - T0
@@ -284,7 +302,7 @@ contains
         ice%smb      = 0.0              ! [m/a]
         ice%bmb      = 0.0              ! [m/a]
         ice%Q_geo    = 42.0             ! [mW/m2]
-        ice%H_ice    = 1000.0           ! [m] Summit thickness
+        ice%H_ice    = 1000.0           ! [m] Ice thickness
         ice%H_w      = 0.0              ! [m] No basal water
         ice%Q_b      = 0.0              ! [] No basal frictional heating 
         ice%f_grnd   = 1.0              ! Grounded point 
@@ -297,7 +315,7 @@ contains
         ice%vec%advecxy = 0.0           ! [] No horizontal advection 
 
         ! Calculate pressure melting point 
-        ice%vec%T_pmp = calc_T_pmp(ice%H_ice,ice%vec%zeta,T0) 
+        ice%vec%T_pmp = calc_T_pmp(ice%H_ice,ice%vec%zeta,T0,T_pmp_beta) 
 
         if (is_celcius) then 
             ice%T_srf     = ice%T_srf     - T0
@@ -321,6 +339,91 @@ contains
         return 
 
     end subroutine init_k15_expa 
+    
+    subroutine init_k15_expb(ice)
+
+        implicit none 
+
+        type(icesheet), intent(INOUT) :: ice
+
+        ! Local variables 
+        integer :: k, nz 
+        real(prec) :: ATT, CR, K0, gamma, beta   
+        real(prec), allocatable :: ux(:)
+        real(prec), allocatable :: uy(:)  
+        real(prec), allocatable :: mu(:)
+        real(prec), allocatable :: eps(:) 
+
+        nz    = size(ice%vec%zeta)
+
+        ! Assign point values
+        ice%T_srf    = T0 - 1.5         ! [K]
+        ice%T_shlf   = T0               ! [K] T_shlf not used in this idealized setup, set to T0  
+        ice%smb      = 0.3              ! [m/a]
+        ice%bmb      = 0.0              ! [m/a]
+        ice%Q_geo    = 0.0              ! [mW/m2]
+        ice%H_ice    = 200.0            ! [m] Ice thickness
+        ice%H_w      = 0.0              ! [m] No basal water
+        ice%Q_b      = 0.0              ! [] No basal frictional heating 
+        ice%f_grnd   = 1.0              ! Grounded point 
+
+        ! EISMINT1
+        ice%vec%cp      = 2009.0        ! [J kg-1 K-1]
+        ice%vec%kt      = 6.6269e7      ! [J a-1 m-1 K-1]   == 2.1*sec_year  [J s-1 m-1 K-1] => J a-1 m-1 K-1]
+        
+
+        ATT             = 5.3e-24*sec_year      ! Rate factor
+        beta            = 0.0                   ! Depth-dependence of melting point 
+        gamma           = 4.0                   ! [degrees] Bed slope 
+        CR              = 1e-1                  ! Conductivity ratio 
+
+        K0              = (ice%vec%kt(1) / ice%vec%cp(1)) * CR    
+
+        allocate(ux(nz))
+        allocate(uy(nz))
+        allocate(eps(nz))
+        allocate(mu(nz))
+
+        ux = 0.5*ATT*(rho_ice*g*sin(gamma*pi/180.0))**3 * (ice%H_ice**4 - (ice%H_ice - ice%H_ice*ice%vec%zeta)**4)
+        uy = 0.0 
+
+        eps = ATT*(rho_ice*g*sin(gamma*pi/180.0))**3 *(ice%H_ice - ice%H_ice*ice%vec%zeta)**3
+        mu  = 0.5*ATT**(-1.0/3.0)*eps**(-2.0/3.0)
+
+        ice%vec%Q_strn(nz)  = 0.0  
+        ice%vec%Q_strn(1:nz-1)  = 4.0*mu(1:nz-1)*eps(1:nz-1)**2     ! [J a-1 m-3] Prescribed strain heating 
+        ice%vec%advecxy = 0.0                                       ! [] No horizontal advection (assume constant)
+
+        ! Write strain heating to compare basal value of ~2.6e-3 W/m-3
+        do k = nz, 1, -1 
+            write(*,*) ice%vec%zeta(k), ice%vec%Q_strn(k)/sec_year 
+        end do 
+
+        ! Calculate pressure melting point 
+        ice%vec%T_pmp = calc_T_pmp(ice%H_ice,ice%vec%zeta,T0,T_pmp_beta) 
+
+        if (is_celcius) then 
+            ice%T_srf     = ice%T_srf     - T0
+            ice%T_shlf    = ice%T_shlf    - T0
+            ice%vec%T_pmp = ice%vec%T_pmp - T0 
+        end if 
+
+        ! Define initial temperature profile
+        ! (constant equal to surface temp)
+        ice%vec%T_ice(nz) = ice%T_srf 
+        ice%vec%T_ice(1)  = ice%T_srf
+
+        ! Intermediate layers are linearly interpolated 
+        do k = 2, nz-1 
+            ice%vec%T_ice(k) = ice%vec%T_ice(1)+ice%vec%zeta(k)*(ice%vec%T_ice(nz)-ice%vec%T_ice(1))
+        end do 
+
+        ! Define constant vertical velocity profile
+        ice%vec%uz = -ice%smb
+
+        return 
+
+    end subroutine init_k15_expb 
     
     subroutine icesheet_allocate(ice,nz,zeta_scale)
         ! Allocate the ice sheet object 

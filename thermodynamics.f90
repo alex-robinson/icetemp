@@ -4,13 +4,10 @@ module thermodynamics
     ! Note: once icetemp is working well, this module could be 
     ! remerged into icetemp as one module. 
 
-    use defs, only : prec, sec_year, pi, T0, g, rho_ice, rho_sw, rho_w
+    use defs, only : prec, sec_year, pi, T0, g, rho_ice, rho_sw, rho_w, L_ice, T_pmp_beta 
 
     implicit none 
 
-!     real(prec), parameter :: L_ice = 3.35e5       ! Specific latent heat of fusion of ice [J Kg-1]
-    real(prec), parameter :: L_ice = 3.34e5       ! Kleiner et al. (2015)
-    
     private  
 
     public :: calc_bmb_grounded
@@ -113,7 +110,7 @@ contains
             Q_net = Q_b + Q_ice_b + Q_geo_now
             
             bmb_grnd = - Q_net /(rho_ice*L_ice - net_enth)
-            
+
         else 
             ! Floating point, no grounded bmb 
 
@@ -518,7 +515,7 @@ contains
 
     end function calc_thermal_conductivity
     
-    elemental function calc_T_pmp(H_ice,zeta,T0) result(T_pmp)
+    elemental function calc_T_pmp(H_ice,zeta,T0,beta) result(T_pmp)
         ! Greve and Blatter (Chpt 4, pg 54), Eq. 4.13
         ! This gives the pressure-corrected melting point of ice
         ! where H_ice*(1-zeta) is the thickness of ice overlying the current point 
@@ -527,30 +524,24 @@ contains
 
         real(prec), intent(IN) :: H_ice  ! [m] Total ice thickness of this point
         real(prec), intent(IN) :: zeta   ! [-] Fractional height of this point within the ice
-        real(prec), intent(IN) :: T0     ! [K] Reference freezing point of water (273.15 K)
+        real(prec), intent(IN) :: T0     ! [K] Reference freezing point of water (e.g., 273.15 K or 0 C)
+        real(prec), intent(IN) :: beta   ! [K Pa^-1] Melting point gradient with pressure
         real(prec) :: T_pmp              ! [K] Pressure corrected melting point
 
         ! Local variables
         real(prec) :: depth
+        real(prec) :: beta1 
 
-        ! beta1, the slope of the correction with depth has various values in the literature,
-        ! however, in most cases, this value makes no change to the results. Three values are
-        ! available below from the following references:
-        ! 1. Greve and Blatter (2009): beta1 = (beta*rho*g), beta=9.8e-8 [K Pa^-1]
-        ! 2. EISMINT2 value 
-        ! 3. Kleiner et al. (2015): beta1 = (beta*rho*g), beta=7.9e-8 [K Pa^-1]
-!         real(prec), parameter :: beta1 = 8.74e-4    ! [K m^-1]   
-!         real(prec), parameter :: beta1 = 8.66e-4    ! [K m^-1] 
-        real(prec), parameter :: beta1 = 7.05e-4    ! [K m^-1] 
+!         real(prec), parameter :: beta = 9.8e-8 [K Pa^-1]      ! Greve and Blatter (2009) 
+!         real(prec), parameter :: beta = 9.7e-8 [K Pa^-1]      ! EISMINT2 value (beta1 = 8.66e-4 [K m^-1])
+!         real(prec), parameter :: beta = 7.9e-8 [K Pa^-1]      ! Kleiner et al. (2015)
 
         ! Get thickness of ice above current point
         depth = H_ice*(1.0-zeta)
 
         ! Calculate the pressure-corrected melting point
-        T_pmp = T0 - beta1*depth
+        T_pmp = T0 - (beta*rho_ice*g)*depth
 
-        ! ajr: note: should we account here for whether ice is floating or not, changing the pressure? 
-        
         return 
 
     end function calc_T_pmp 
@@ -662,7 +653,7 @@ contains
             if (H_ice(i,j) .gt. 0.0) then
                 ! Ice is present, define linear temperature profile with frozen bed (-10 degC)
                  
-                T_base       = calc_T_pmp(H_ice(i,j),zeta_aa(1),T0) - 10.0 
+                T_base       = calc_T_pmp(H_ice(i,j),zeta_aa(1),T0,T_pmp_beta) - 10.0 
                 T_ice(i,j,:) = calc_temp_linear_column(T_srf(i,j),T_base,T0,zeta_aa)
 
             else 
@@ -674,7 +665,7 @@ contains
             ! Calculate enthalpy as well for all layers 
             ! TO DO !
             !do k = 1, nz_aa
-            !    T_pmp = calc_T_pmp(H_ice(i,j),zeta_aa(k),T0)
+            !    T_pmp = calc_T_pmp(H_ice(i,j),zeta_aa(k),T0,T_pmp_beta)
             !    enth_ice(i,j,k) = enth_fct_temp_omega(T_ice(i,j,k)-T_pmp, 0.0_prec)   ! Assume zero water content
             !end do 
 

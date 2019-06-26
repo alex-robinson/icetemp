@@ -35,7 +35,7 @@ contains
         real(prec), intent(IN)    :: cp(:)          ! nz_aa [J kg-1 K-1] Specific heat capacity
         real(prec), intent(IN)    :: kt(:)          ! nz_aa [J a-1 m-1 K-1] Heat conductivity 
         real(prec), intent(IN)    :: uz(:)          ! nz_ac [m a-1] Vertical velocity 
-        real(prec), intent(IN)    :: Q_strn(:)      ! nz_aa [K a-1] Internal strain heat production in ice
+        real(prec), intent(IN)    :: Q_strn(:)      ! nz_aa [J a-1 m-3] Internal strain heat production in ice
         real(prec), intent(IN)    :: advecxy(:)     ! nz_aa [K a-1] Horizontal heat advection 
         real(prec), intent(IN)    :: Q_b            ! [J a-1 m-2] Basal frictional heat production
         real(prec), intent(IN)    :: Q_geo          ! [mW m-2] Geothermal heat flux (positive up)
