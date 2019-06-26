@@ -55,6 +55,7 @@ program test_icetemp
     integer            :: n, ntot 
     character(len=512) :: file1D 
     real(prec)         :: dt_out 
+    character(len=56)  :: zeta_scale 
     integer            :: nz 
     logical            :: is_celcius 
     character(len=56)  :: age_method 
@@ -72,7 +73,8 @@ program test_icetemp
     experiment     = "k15expb"      ! "eismint", "k15expa", "k15expb"
     
     ! General options
-    nz              = 25            ! [--] Number of ice sheet points (aa-nodes + base + surface)
+    zeta_scale      = "tanh"        ! "linear", "exp", "tanh"
+    nz              = 21            ! [--] Number of ice sheet points (aa-nodes + base + surface)
     is_celcius      = .TRUE. 
 
     age_method      = "expl"        ! "expl" or "impl"
@@ -80,7 +82,7 @@ program test_icetemp
 
     use_enth        = .TRUE.        ! Use enthalpy solver? 
     enth_nu         = 0.035         ! Enthalpy solver: water diffusivity, nu=0.035 kg m-1 a-1 in Greve and Blatter (2016)
-    enth_cr         = 1e-3          ! Enthalpy solver: conductivity ratio kappa_water / kappa_ice 
+    enth_cr         = 1e-1          ! Enthalpy solver: conductivity ratio kappa_water / kappa_ice 
 
     file1D          = "test.nc" 
     
@@ -90,7 +92,7 @@ program test_icetemp
     if (is_celcius) T0_ref = 0.0 
 
     ! Initialize icesheet object 
-    call icesheet_allocate(ice1,nz=nz,zeta_scale="tanh") 
+    call icesheet_allocate(ice1,nz=nz,zeta_scale=zeta_scale) 
 
     select case(trim(experiment))
 
@@ -114,7 +116,7 @@ program test_icetemp
 
             T_pmp_beta = 0.0            ! [K Pa^-1] Kleiner et al. (2015), expb
             
-            call init_k15_expb(ice1,smb=0.2,T_srf=-1.0)
+            call init_k15_expb(ice1,smb=0.2,T_srf=-3.0)
 
         case DEFAULT 
             ! EISMINT 

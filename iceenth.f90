@@ -83,7 +83,7 @@ contains
         real(prec), allocatable :: fac_enth(:)  ! aa-nodes 
         real(prec), allocatable :: var(:)       ! aa-nodes 
         
-        real(prec), parameter :: omega_max = 0.01       ! [-] Maximum allowed water fraction inside ice 
+        real(prec), parameter :: omega_max = 0.02       ! [-] Maximum allowed water fraction inside ice 
 
         nz_aa = size(zeta_aa,1)
         nz_ac = size(zeta_ac,1)
@@ -558,7 +558,7 @@ contains
         real(prec)  :: kappa_temp       ! Temperate diffusivity 
         real(prec), allocatable :: enth_temp(:) 
         
-        logical, parameter :: use_harmonic_avg = .FALSE. 
+        logical, parameter :: use_harmonic_avg = .TRUE. 
 
         nz_aa = size(enth)
 
@@ -644,6 +644,7 @@ contains
 
         ! Local variables 
         integer :: k, k0, nz 
+        real(prec) :: f_lin 
         real(prec), allocatable :: enth_pmp(:) 
 
         nz = size(enth,1) 
@@ -666,9 +667,15 @@ contains
             ! Whole column is cold 
             H_cts = 0.0 
         else 
-            ! Perform interpolation <== just assign previous layer for now (last layer with enth=enth_pmp)
+            ! Perform interpolation
             k0 = k-1 
-            H_cts = H_ice*zeta(k0)
+
+            ! Get linear weight for where E(f_lin) = Epmp(f_lin)
+            ! E(k0) + dE*f_lin = Epmp(k0) + dEpmp*f_lin 
+            ! f_lin = (Epmp(k0)-E(k0)) / (dE - dEpmp)
+            f_lin = (enth_pmp(k0)-enth(k0)) / ( (enth(k)-enth(k0)) - (enth_pmp(k)-enth_pmp(k0)) )
+
+            H_cts = H_ice * (zeta(k0) + f_lin*(zeta(k)-zeta(k0)))
 
         end if 
 
