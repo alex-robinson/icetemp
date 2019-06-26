@@ -416,7 +416,6 @@ contains
                 
                 T_ice(k) = T_pmp(k)
                 omega(k) = (enth(k) - enth_pmp(k)) / ((rho_w-rho_ice)*cp(k)*T_pmp(k)+rho_w*L_ice)
-
              else
                 ! Cold ice 
 
@@ -537,7 +536,7 @@ contains
                 denth      = enth(k) - enth(k-1)
                 denth_temp = enth_temp(k) - enth_temp(k-1)   ! = denth in cold ice, < denth in temperate ice
             end if 
-            
+
             if (abs(denth) .lt. 1e-10_prec*rho_w*L_ice .and. T_ice(k) .lt. T_pmp(k)) then 
                 ! Cold ice, no gradient, assign fraction for cold ice diffusion 
                 f_avg = 1.0 

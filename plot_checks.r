@@ -29,7 +29,10 @@ if (TRUE) {
     }
 
     # Read data for comparison 
-    k15a = read.table("data/Kleiner2015_FIg2_EXPA-IIIa-melt.txt",header=TRUE)
+    k15a   = read.table("data/Kleiner2015_Fig2_EXPA-IIIa-melt.txt",header=TRUE)
+    k15b_e = read.table("data/Kleiner2015_Fig4_EXPB-enth.txt",header=TRUE)
+    k15b_t = read.table("data/Kleiner2015_Fig4_EXPB-temp.txt",header=TRUE)
+    k15b_o = read.table("data/Kleiner2015_Fig4_EXPB-omega.txt",header=TRUE)
 
 }
 
@@ -129,7 +132,7 @@ if (TRUE & experiment == "k15expb") {
 
     par(mfrow=c(1,3))
 
-    # Panel 1: Tb #############################
+    # Panel 1: Enthalpy #############################
     par(plt=c(0.12,0.95,0.12,0.95))
     xlim = c(92,108)
     x.at = c(92,96,100,104,108)
@@ -140,11 +143,14 @@ if (TRUE & experiment == "k15expb") {
     axis(2,at=y.at)
     mtext(side=1,line=1.6,las=0,cex=0.7,"Enthalpy (kJ kg-1)")
 
+    # Kleiner et al. (2015) analytical solution from Fig. 4
+    lines(k15b_e$enth,k15b_e$zeta,col=2,lwd=4)
+
     lines(dat$enth[,kt]/rho_ice*1e-3 - E_ref,dat$zeta,col=1,lwd=3)
 
     box() 
 
-    # Panel 2: ab #############################
+    # Panel 2: T_ice #############################
     par(plt=c(0.12,0.95,0.12,0.95))
     xlim = c(-3.2,0.5)
     x.at = pretty(xlim,5)
@@ -155,11 +161,14 @@ if (TRUE & experiment == "k15expb") {
     axis(2,at=y.at)
     mtext(side=1,line=1.6,las=0,cex=0.7,"Temperature (°C)")
 
+    # Kleiner et al. (2015) analytical solution from Fig. 4
+    lines(k15b_t$temp,k15b_t$zeta,col=2,lwd=4)
+
     lines(dat$T_ice[,kt],dat$zeta,col=1,lwd=3)
 
     box() 
     
-    # Panel 2: H_w #############################
+    # Panel 2: omega #############################
     par(plt=c(0.12,0.95,0.12,0.95))
     xlim = c(-0.1,3)
     x.at = pretty(xlim,10)
@@ -170,10 +179,12 @@ if (TRUE & experiment == "k15expb") {
     axis(2,at=y.at)
     mtext(side=1,line=1.6,las=0,cex=0.7,"Water content (%)")
 
-    # Kleiner peak water value 
-    abline(h=c(130),col=1,lty=2)
-    
+    # Kleiner et al. (2015) analytical solution from Fig. 4
+    lines(k15b_o$omega,k15b_o$zeta,col=2,lwd=4)
+
     lines(dat$omega[,kt]*100,dat$zeta,col=1,lwd=3)
+
+    legend("topright",bty="n",inset=0.01,col=c(1,2),lwd=c(3,4),c("Yelmo","Kleiner et al. (2015)"))
 
     box() 
     
