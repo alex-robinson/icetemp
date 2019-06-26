@@ -60,7 +60,8 @@ program test_icetemp
     logical            :: is_celcius 
     character(len=56)  :: age_method 
     real(prec)         :: age_impl_kappa
-    logical            :: use_enth 
+    logical            :: use_enth
+    character(len=12)  :: enth_solver  
     real(prec)         :: enth_cr
     character(len=56)  :: experiment 
 
@@ -79,7 +80,8 @@ program test_icetemp
     age_method      = "expl"        ! "expl" or "impl"
     age_impl_kappa  = 1.5           ! [m2 a-1] Artificial diffusion for age tracing
 
-    use_enth        = .TRUE.        ! Use enthalpy solver? 
+    use_enth        = .TRUE.        ! Use iceenth subroutines? If not, use icetemp subroutines. 
+    enth_solver     = "enth"        ! "enth" or "temp" 
     enth_cr         = 1e-3          ! Enthalpy solver: conductivity ratio kappa_water / kappa_ice 
 
     file1D          = "test.nc" 
@@ -188,8 +190,8 @@ program test_icetemp
             ! Use enthalpy solver 
 
             call calc_temp_column_enth(ice1%vec%T_ice,ice1%vec%omega,ice1%vec%enth,ice1%bmb,ice1%Q_ice_b,ice1%H_cts,ice1%vec%T_pmp, &
-                        ice1%vec%cp,ice1%vec%kt,ice1%vec%uz,ice1%vec%Q_strn,ice1%vec%advecxy,ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%T_shlf, &
-                        ice1%H_ice,ice1%H_w,ice1%f_grnd,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b,enth_cr,T0_ref,dt)
+                    ice1%vec%cp,ice1%vec%kt,ice1%vec%uz,ice1%vec%Q_strn,ice1%vec%advecxy,ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%T_shlf, &
+                    ice1%H_ice,ice1%H_w,ice1%f_grnd,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b,enth_cr,T0_ref,dt,enth_solver)
 
         else 
             ! Use temperature solver 

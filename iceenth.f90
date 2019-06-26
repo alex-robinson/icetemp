@@ -15,7 +15,7 @@ module iceenth
 contains 
 
     subroutine calc_temp_column_enth(T_ice,omega,enth,bmb_grnd,Q_ice_b,H_cts,T_pmp,cp,kt,uz,Q_strn,advecxy,Q_b,Q_geo, &
-                    T_srf,T_shlf,H_ice,H_w,f_grnd,zeta_aa,zeta_ac,dzeta_a,dzeta_b,cr,T0,dt)
+                    T_srf,T_shlf,H_ice,H_w,f_grnd,zeta_aa,zeta_ac,dzeta_a,dzeta_b,cr,T0,dt,solver)
         ! Thermodynamics solver for a given column of ice 
         ! Note zeta=height, k=1 base, k=nz surface 
         ! Note: nz = number of vertical boundaries (including zeta=0.0 and zeta=1.0), 
@@ -52,8 +52,7 @@ contains
         real(prec), intent(IN)    :: cr             ! [--] Conductivity ratio (kappa_water / kappa_ice)
         real(prec), intent(IN)    :: T0             ! [K or degreesCelcius] Reference melting temperature  
         real(prec), intent(IN)    :: dt             ! [a] Time step 
-        
-        logical                   :: use_enth 
+        character(len=12), intent(IN) :: solver     ! "enth" or "temp" 
         
         ! Local variables 
         integer    :: k, nz_aa, nz_ac
@@ -79,6 +78,7 @@ contains
         real(prec), allocatable :: solution(:)  ! nz_aa
         real(prec) :: fac, fac_a, fac_b, uz_aa, dzeta, dz, dz1, dz2  
         real(prec) :: kappa_a, kappa_b, dza, dzb 
+        logical    :: use_enth 
 
         real(prec), parameter :: omega_max = 0.03       ! [-] Maximum allowed water fraction inside ice 
 
@@ -95,11 +95,12 @@ contains
         allocate(rhs(nz_aa))
         allocate(solution(nz_aa))
 
-        
+        ! Determine which solver to use: enth or temp 
+        use_enth = .TRUE. 
+        if (trim(solver) .eq. "temp") use_enth = .FALSE. 
+
         ! Get geothermal heat flux in proper units 
         Q_geo_now = Q_geo*1e-3*sec_year   ! [mW m-2] => [J m-2 a-1]
-
-        use_enth = .TRUE. 
 
         ! Get enthalpy to have enth, omega and T_ice all defined and consistent initially
         call convert_to_enthalpy_column(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
@@ -332,8 +333,9 @@ contains
             ! Make sure base is below pmp too (mass/energy balance handled via bmb_grnd calculation externally)
             if (T_ice(1) .gt. T_pmp(1)) T_ice(1) = T_pmp(1)
 
-            ! Also set omega to zero in the entire column, since it is not handled without enthalpy
+            ! Also set omega to constant value where ice is temperate just for some consistency 
             omega = 0.0 
+            where (T_ice .ge. T_pmp) omega = 0.01 
 
             ! Finally, get enthalpy too 
             call convert_to_enthalpy_column(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
