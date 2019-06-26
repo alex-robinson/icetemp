@@ -80,7 +80,7 @@ program test_icetemp
 
     use_enth        = .TRUE.        ! Use enthalpy solver? 
     enth_nu         = 0.035         ! Enthalpy solver: water diffusivity, nu=0.035 kg m-1 a-1 in Greve and Blatter (2016)
-    enth_cr         = 1e-2          ! Enthalpy solver: conductivity ratio kappa_water / kappa_ice 
+    enth_cr         = 1e-3          ! Enthalpy solver: conductivity ratio kappa_water / kappa_ice 
 
     file1D          = "test.nc" 
     
@@ -108,13 +108,13 @@ program test_icetemp
         case("k15expb")
 
             t_start = 0.0       ! [yr]
-            t_end   = 10e3      ! [yr]
+            t_end   = 50e3      ! [yr]
             dt      = 5.0       ! [yr]
             dt_out  = 1000.0    ! [yr] 
 
             T_pmp_beta = 0.0            ! [K Pa^-1] Kleiner et al. (2015), expb
             
-            call init_k15_expb(ice1)
+            call init_k15_expb(ice1,smb=0.2,T_srf=-1.0)
 
         case DEFAULT 
             ! EISMINT 
@@ -346,15 +346,17 @@ contains
 
     end subroutine init_k15_expa 
     
-    subroutine init_k15_expb(ice)
+    subroutine init_k15_expb(ice,smb,T_srf)
 
         implicit none 
 
         type(icesheet), intent(INOUT) :: ice
+        real(prec),     intent(IN)    :: smb 
+        real(prec),     intent(IN)    :: T_srf ! [degrees Celcius]
 
         ! Local variables 
         integer :: k, nz 
-        real(prec) :: ATT, CR, K0, gamma, beta   
+        real(prec) :: ATT, CR, K0, gamma   
         real(prec), allocatable :: ux(:)
         real(prec), allocatable :: uy(:)  
         real(prec), allocatable :: mu(:)
@@ -363,9 +365,9 @@ contains
         nz    = size(ice%vec%zeta)
 
         ! Assign point values
-        ice%T_srf    = T0 - 1.5         ! [K]
+        ice%T_srf    = T_srf + T0       ! [K]
         ice%T_shlf   = T0               ! [K] T_shlf not used in this idealized setup, set to T0  
-        ice%smb      = 0.3              ! [m/a]
+        ice%smb      = smb              ! [m/a]
         ice%bmb      = 0.0              ! [m/a]
         ice%Q_geo    = 0.0              ! [mW/m2]
         ice%H_ice    = 200.0            ! [m] Ice thickness
@@ -379,7 +381,6 @@ contains
         
 
         ATT             = 5.3e-24*sec_year      ! Rate factor
-        beta            = 0.0                   ! Depth-dependence of melting point 
         gamma           = 4.0                   ! [degrees] Bed slope 
         CR              = 1e-1                  ! Conductivity ratio 
 
