@@ -241,7 +241,7 @@ contains
             supd(k) = fac_b + uz_aa * dt/dz
             diag(k) = 1.0_prec - fac_a - fac_b
             rhs(k)  = var(k) - dt*advecxy(k) + dt*Q_strn_now*fac_enth(k)
-
+            
         end do 
 
         ! == Ice surface ==

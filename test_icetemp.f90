@@ -105,18 +105,18 @@ program test_icetemp
 
             T_pmp_beta = 7.9e-8         ! [K Pa^-1] Kleiner et al. (2015), expa
 
-            call init_k15_expa(ice1)
+            call init_k15expa(ice1)
 
         case("k15expb")
 
             t_start = 0.0       ! [yr]
-            t_end   = 10e3      ! [yr]
+            t_end   = 1e3       ! [yr]
             dt      = 0.5       ! [yr]
-            dt_out  = 200.0     ! [yr] 
+            dt_out  = 20.0      ! [yr] 
 
             T_pmp_beta = 0.0            ! [K Pa^-1] Kleiner et al. (2015), expb
             
-            call init_k15_expb(ice1,smb=0.2,T_srf=-3.0)
+            call init_k15expb(ice1,smb=0.2,T_srf=-3.0)
 
         case DEFAULT 
             ! EISMINT 
@@ -292,7 +292,7 @@ contains
 
     end subroutine init_eismint_summit 
 
-    subroutine init_k15_expa(ice)
+    subroutine init_k15expa(ice)
 
         implicit none 
 
@@ -345,19 +345,19 @@ contains
 
         return 
 
-    end subroutine init_k15_expa 
+    end subroutine init_k15expa 
     
-    subroutine init_k15_expb(ice,smb,T_srf)
+    subroutine init_k15expb(ice,smb,T_srf)
 
         implicit none 
 
         type(icesheet), intent(INOUT) :: ice
         real(prec),     intent(IN)    :: smb 
         real(prec),     intent(IN)    :: T_srf ! [degrees Celcius]
-
+            
         ! Local variables 
         integer :: k, nz 
-        real(prec) :: ATT, gamma   
+        real(prec) :: ATT, gamma, T_init    
         real(prec), allocatable :: ux(:)
         real(prec), allocatable :: uy(:)  
         real(prec), allocatable :: mu(:)
@@ -383,6 +383,7 @@ contains
 
         ATT             = 5.3e-24*sec_year      ! Rate factor
         gamma           = 4.0                   ! [degrees] Bed slope 
+        T_init          = T0 - 1.5 
 
         allocate(ux(nz))
         allocate(uy(nz))
@@ -415,8 +416,8 @@ contains
 
         ! Define initial temperature profile
         ! (constant equal to surface temp)
-        ice%vec%T_ice(nz) = ice%T_srf 
-        ice%vec%T_ice(1)  = ice%T_srf
+        ice%vec%T_ice(nz) = T_init
+        ice%vec%T_ice(1)  = T_init 
 
         ! Intermediate layers are linearly interpolated 
         do k = 2, nz-1 
@@ -428,7 +429,7 @@ contains
 
         return 
 
-    end subroutine init_k15_expb 
+    end subroutine init_k15expb 
     
     subroutine icesheet_allocate(ice,nz,zeta_scale)
         ! Allocate the ice sheet object 
