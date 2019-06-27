@@ -125,7 +125,7 @@ program test_icetemp
             t_end   = 100e3     ! [yr]
             dt      = 5.0       ! [yr]
             dt_out  = 1000.0    ! [yr] 
-
+            
             !T_pmp_beta = 9.8e-8         ! [K Pa^-1] Greve and Blatter (2009) 
             T_pmp_beta = 9.7e-8         ! [K Pa^-1] EISMINT2 value (beta1 = 8.66e-4 [K m^-1])
 
@@ -189,7 +189,7 @@ program test_icetemp
             ! Use enthalpy solver 
 
             call calc_enth_column(ice1%vec%enth,ice1%vec%T_ice,ice1%vec%omega,ice1%bmb,ice1%Q_ice_b,ice1%H_cts,ice1%vec%T_pmp, &
-                    ice1%vec%cp,ice1%vec%kt,ice1%vec%uz,ice1%vec%Q_strn,ice1%vec%advecxy,ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%T_shlf, &
+                    ice1%vec%cp,ice1%vec%kt,ice1%vec%advecxy,ice1%vec%uz,ice1%vec%Q_strn,ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%T_shlf, &
                     ice1%H_ice,ice1%H_w,ice1%f_grnd,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b,enth_cr,T0_ref,dt,enth_solver)
             
         else 

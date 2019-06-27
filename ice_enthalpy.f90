@@ -14,7 +14,7 @@ module ice_enthalpy
 
 contains 
 
-    subroutine calc_enth_column(enth,T_ice,omega,bmb_grnd,Q_ice_b,H_cts,T_pmp,cp,kt,uz,Q_strn,advecxy,Q_b,Q_geo, &
+    subroutine calc_enth_column(enth,T_ice,omega,bmb_grnd,Q_ice_b,H_cts,T_pmp,cp,kt,advecxy,uz,Q_strn,Q_b,Q_geo, &
                     T_srf,T_shlf,H_ice,H_w,f_grnd,zeta_aa,zeta_ac,dzeta_a,dzeta_b,cr,T0,dt,solver)
         ! Thermodynamics solver for a given column of ice 
         ! Note zeta=height, k=1 base, k=nz surface 
@@ -35,9 +35,9 @@ contains
         real(prec), intent(IN)    :: T_pmp(:)       ! nz_aa [K] Pressure melting point temp.
         real(prec), intent(IN)    :: cp(:)          ! nz_aa [J kg-1 K-1] Specific heat capacity
         real(prec), intent(IN)    :: kt(:)          ! nz_aa [J a-1 m-1 K-1] Heat conductivity 
+        real(prec), intent(IN)    :: advecxy(:)     ! nz_aa [K a-1] Horizontal heat advection 
         real(prec), intent(IN)    :: uz(:)          ! nz_ac [m a-1] Vertical velocity 
         real(prec), intent(IN)    :: Q_strn(:)      ! nz_aa [J a-1 m-3] Internal strain heat production in ice
-        real(prec), intent(IN)    :: advecxy(:)     ! nz_aa [K a-1] Horizontal heat advection 
         real(prec), intent(IN)    :: Q_b            ! [J a-1 m-2] Basal frictional heat production
         real(prec), intent(IN)    :: Q_geo          ! [mW m-2] Geothermal heat flux (positive up)
         real(prec), intent(IN)    :: T_srf          ! [K] Surface temperature 
@@ -52,7 +52,7 @@ contains
         real(prec), intent(IN)    :: cr             ! [--] Conductivity ratio (kappa_water / kappa_ice)
         real(prec), intent(IN)    :: T0             ! [K or degreesCelcius] Reference melting temperature  
         real(prec), intent(IN)    :: dt             ! [a] Time step 
-        character(len=12), intent(IN) :: solver     ! "enth" or "temp" 
+        character(len=*), intent(IN) :: solver      ! "enth" or "temp" 
         
         ! Local variables 
         integer    :: k, nz_aa, nz_ac
