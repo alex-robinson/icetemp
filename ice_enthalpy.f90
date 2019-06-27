@@ -7,8 +7,6 @@ module ice_enthalpy
 
     implicit none
     
-    real(prec), parameter :: cp_w = 4128.0      ! [J kg-1 K-1] Specific heat of water near freezing point 
-
     private
     public :: calc_enth_column 
     public :: convert_to_enthalpy
@@ -28,7 +26,7 @@ contains
         
         implicit none 
 
-        real(prec), intent(INOUT) :: enth(:)        ! nz_aa [J m-3] Ice column enthalpy
+        real(prec), intent(INOUT) :: enth(:)        ! nz_aa [J kg] Ice column enthalpy
         real(prec), intent(INOUT) :: T_ice(:)       ! nz_aa [K] Ice column temperature
         real(prec), intent(INOUT) :: omega(:)       ! nz_aa [-] Ice column water content fraction
         real(prec), intent(INOUT) :: bmb_grnd       ! [m a-1] Basal mass balance (melting is negative)
@@ -107,7 +105,7 @@ contains
         ! Note: in principle, these quantities should all be available and consistent
         ! when entering the routine, but it ensures that enthalpy is defined if only 
         ! T_ice and omega are known initially.
-        call convert_to_enthalpy(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
+        call convert_to_enthalpy(enth,T_ice,omega,T_pmp,cp,L_ice)
 
         ! Step 0: Calculate diffusivity, set prognostic variable (T_ice or enth),
         ! and corresponding scaling factor (fac_enth)
@@ -118,8 +116,8 @@ contains
             ! Calculate diffusivity on cell centers (aa-nodes)
             call calc_enth_diffusivity(kappa_aa,T_ice,omega,enth,T_pmp,cp,kt,rho_ice,rho_w,L_ice,cr)
 
-            fac_enth = rho_ice*cp       ! To scale to units of [J m-3]
-            var      = enth             ! [J m-3]
+            fac_enth = cp               ! To scale to units of [J kg]
+            var      = enth             ! [J kg]
 
         else 
             ! Use temperature as prognostic variable  
@@ -267,7 +265,7 @@ contains
             enth  = solution
 
             ! Get temperature and water content 
-            call convert_from_enthalpy_column(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
+            call convert_from_enthalpy_column(enth,T_ice,omega,T_pmp,cp,L_ice)
             
             ! Set internal melt to zero 
             melt_internal = 0.0 
@@ -291,12 +289,12 @@ contains
             if (omega(1) .gt. omega_max) omega(1) = omega_max 
 
             ! Finally, get enthalpy again too (to be consistent with new omega) 
-            call convert_to_enthalpy(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
+            call convert_to_enthalpy(enth,T_ice,omega,T_pmp,cp,L_ice)
 
-            ! Calculate heat flux at ice base as enthalpy gradient * diffusivity [J a-1 m-2]
+            ! Calculate heat flux at ice base as enthalpy gradient * rho_ice * diffusivity [J a-1 m-2]
             if (H_ice .gt. 0.0_prec) then 
                 dz = H_ice * (zeta_aa(2)-zeta_aa(1))
-                Q_ice_b = kappa_aa(1) * (enth(2) - enth(1)) / dz
+                Q_ice_b = kappa_aa(1) * rho_ice * (enth(2) - enth(1)) / dz
             else
                 Q_ice_b = 0.0 
             end if 
@@ -339,7 +337,7 @@ contains
             where (T_ice .ge. T_pmp) omega = 0.01 
 
             ! Finally, get enthalpy too 
-            call convert_to_enthalpy(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
+            call convert_to_enthalpy(enth,T_ice,omega,T_pmp,cp,L_ice)
 
             ! Calculate heat flux at ice base as temperature gradient * conductivity [J a-1 m-2]
             if (H_ice .gt. 0.0_prec) then 
@@ -359,7 +357,7 @@ contains
 
 
         ! Finally, calculate the CTS height 
-        H_cts = calc_cts_height(enth,T_pmp,cp,H_ice,rho_ice,zeta_aa)
+        H_cts = calc_cts_height(enth,T_pmp,cp,H_ice,zeta_aa)
 
         return 
 
@@ -367,7 +365,7 @@ contains
 
     ! ========== ENTHALPY ==========================================
 
-    elemental subroutine convert_to_enthalpy(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
+    elemental subroutine convert_to_enthalpy(enth,T_ice,omega,T_pmp,cp,L_ice)
         ! Given temperature and water content, calculate enthalpy.
 
         implicit none 
@@ -377,17 +375,15 @@ contains
         real(prec), intent(IN)  :: omega            ! [-] Ice water content (fraction)
         real(prec), intent(IN)  :: T_pmp            ! [K] Ice pressure melting point
         real(prec), intent(IN)  :: cp               ! [J kg-1 K-1] Heat capacity 
-        real(prec), intent(IN)  :: rho_ice          ! [kg m-3] Ice density 
-        real(prec), intent(IN)  :: rho_w            ! [kg m-3] Water density 
         real(prec), intent(IN)  :: L_ice            ! [J kg-1] Latent heat of ice 
         
-        enth = (1.0_prec-omega)*(rho_ice*cp*T_ice) + omega*(rho_w*(cp*T_pmp+L_ice))
-        
+        enth = (1.0_prec-omega)*(cp*T_ice) + omega*(cp*T_pmp + L_ice)
+
         return 
 
     end subroutine convert_to_enthalpy
 
-    subroutine convert_from_enthalpy_column(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
+    subroutine convert_from_enthalpy_column(enth,T_ice,omega,T_pmp,cp,L_ice)
         ! Given enthalpy, calculate temperature and water content. 
 
         implicit none 
@@ -397,8 +393,6 @@ contains
         real(prec), intent(OUT)   :: omega(:)           ! [-] Ice water content (fraction), nz_aa nodes 
         real(prec), intent(IN)    :: T_pmp(:)           ! [K] Ice pressure melting point, nz_aa nodes 
         real(prec), intent(IN)    :: cp(:)              ! [J kg-1 K-1] Heat capacity,nz_aa nodes 
-        real(prec), intent(IN)    :: rho_ice            ! [kg m-3] Ice density 
-        real(prec), intent(IN)    :: rho_w              ! [kg m-3] Water density
         real(prec), intent(IN)    :: L_ice              ! [J kg-1] Latent heat of ice
         
         ! Local variables
@@ -410,7 +404,7 @@ contains
         allocate(enth_pmp(nz_aa))
 
         ! Find pressure melting point enthalpy
-        enth_pmp = T_pmp * rho_ice*cp
+        enth_pmp = T_pmp * cp 
 
         ! Ice interior and basal layer
         ! Note: although the k=1 is a boundary value with no thickness,
@@ -421,11 +415,11 @@ contains
                 ! Temperate ice 
                 
                 T_ice(k) = T_pmp(k)
-                omega(k) = (enth(k) - enth_pmp(k)) / ((rho_w-rho_ice)*cp(k)*T_pmp(k)+rho_w*L_ice)
+                omega(k) = (enth(k) - enth_pmp(k)) / L_ice 
              else
                 ! Cold ice 
 
-                T_ice(k) = enth(k) / (rho_ice*cp(k))
+                T_ice(k) = enth(k) / cp(k) 
                 omega(k) = 0.0_prec
 
              end if
@@ -437,13 +431,13 @@ contains
             ! Temperate surface, reset omega to zero and enth to pmp value 
             
             enth(nz_aa)  = enth_pmp(nz_aa)
-            T_ice(nz_aa) = enth(nz_aa) / (rho_ice*cp(nz_aa))
+            T_ice(nz_aa) = enth(nz_aa) / cp(nz_aa)
             omega(nz_aa) = 0.0_prec 
         
         else 
             ! Cold surface, calculate T, and reset omega to zero 
             
-            T_ice(nz_aa) = enth(nz_aa) / (rho_ice*cp(nz_aa))
+            T_ice(nz_aa) = enth(nz_aa) / cp(nz_aa)
             omega(nz_aa) = 0.0_prec 
         
         end if 
@@ -520,8 +514,9 @@ contains
 
         ! First, define enthalpy associated with temperature only for the whole column 
         ! (for cold ice enth = enth_temp, while for temperate ice enth > enth_temp) 
-        enth_temp = (1.0_prec-omega)*rho_ice*cp*T_ice
-      
+        !enth_temp = (1.0_prec-omega)*rho_ice*cp*T_ice
+        enth_temp = (1.0_prec-omega)*cp*T_ice
+
         ! Compute factors relating the temperature gradient to the total enthalpy gradient.
         ! Use these factors to average the diffusivity between the cold and temperate kappa values.
 
@@ -541,11 +536,11 @@ contains
                 denth_temp = enth_temp(k) - enth_temp(k-1)   ! = denth in cold ice, < denth in temperate ice
             end if 
 
-            if (abs(denth) .lt. 1e-10_prec*rho_w*L_ice .and. T_ice(k) .lt. T_pmp(k)) then 
+            if (abs(denth) .lt. 1e-10_prec*L_ice .and. T_ice(k) .lt. T_pmp(k)) then 
                 ! Cold ice, no gradient, assign fraction for cold ice diffusion 
                 f_avg = 1.0 
 
-            else if (abs(denth) .lt. 1e-10_prec*rho_w*L_ice) then 
+            else if (abs(denth) .lt. 1e-10_prec*L_ice) then
                 ! Warm ice, no gradient, assign fraction for warm ice diffusion 
 
                 f_avg = 0.0 
@@ -579,7 +574,7 @@ contains
 
     end subroutine calc_enth_diffusivity
 
-    function calc_cts_height(enth,T_pmp,cp,H_ice,rho_ice,zeta) result(H_cts)
+    function calc_cts_height(enth,T_pmp,cp,H_ice,zeta) result(H_cts)
         ! Calculate the height of the cold-temperate transition surface (m)
         ! within the ice sheet. 
 
@@ -588,8 +583,7 @@ contains
         real(prec), intent(IN) :: enth(:) 
         real(prec), intent(IN) :: T_pmp(:) 
         real(prec), intent(IN) :: cp(:)
-        real(prec), intent(IN) :: H_ice 
-        real(prec), intent(IN) :: rho_ice 
+        real(prec), intent(IN) :: H_ice  
         real(prec), intent(IN) :: zeta(:) 
         real(prec) :: H_cts 
 
@@ -603,7 +597,7 @@ contains
         allocate(enth_pmp(nz))
 
         ! Get enthalpy at the pressure melting point (no water content)
-        enth_pmp = T_pmp * rho_ice*cp
+        enth_pmp = T_pmp * cp
 
         ! Determine index of the first layer that has enthalpy below enth_pmp 
         do k = 1, nz 

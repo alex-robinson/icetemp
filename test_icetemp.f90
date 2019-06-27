@@ -75,7 +75,7 @@ program test_icetemp
     
     ! General options
     zeta_scale      = "linear"      ! "linear", "exp", "tanh"
-    nz              = 201           ! [--] Number of ice sheet points (aa-nodes + base + surface)
+    nz              = 401           ! [--] Number of ice sheet points (aa-nodes + base + surface)
     is_celcius      = .FALSE. 
 
     age_method      = "expl"        ! "expl" or "impl"
@@ -113,7 +113,7 @@ program test_icetemp
 
             t_start = 0.0       ! [yr]
             t_end   = 1e3       ! [yr]
-            dt      = 0.5       ! [yr]
+            dt      = 0.1       ! [yr]
             dt_out  = 20.0      ! [yr] 
 
             T_pmp_beta = 0.0            ! [K Pa^-1] Kleiner et al. (2015), expb
@@ -149,12 +149,10 @@ program test_icetemp
                                        robin%H_ice,robin%T_srf,robin%smb,robin%Q_geo,is_float=robin%f_grnd.eq.0.0)
 
     ! Calculate initial enthalpy (ice1)
-    call convert_to_enthalpy(ice1%vec%enth,ice1%vec%T_ice,ice1%vec%omega,ice1%vec%T_pmp, &
-                                                                        ice1%vec%cp,rho_ice,rho_w,L_ice)
+    call convert_to_enthalpy(ice1%vec%enth,ice1%vec%T_ice,ice1%vec%omega,ice1%vec%T_pmp,ice1%vec%cp,L_ice)
 
     ! Calculate initial enthalpy (robin)
-    call convert_to_enthalpy(robin%vec%enth,robin%vec%T_ice,robin%vec%omega,robin%vec%T_pmp, &
-                                                                        robin%vec%cp,rho_ice,rho_w,L_ice)
+    call convert_to_enthalpy(robin%vec%enth,robin%vec%T_ice,robin%vec%omega,robin%vec%T_pmp,robin%vec%cp,L_ice)
 
 !     ! Write Robin solution 
 !     file1D = "robin.nc"

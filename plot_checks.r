@@ -19,7 +19,7 @@ if (TRUE) {
     is_celcius = FALSE 
 
     T_ref = 223.15   # [K] 
-    E_ref = (T_ref*rho_ice*cp) / rho_ice *1e-3   # [kJ kg-1]
+    E_ref = (T_ref*cp)*1e-3   # [kJ kg-1]
     
     filename = paste0("test_",experiment,".nc")
 
@@ -29,12 +29,13 @@ if (TRUE) {
     # Calculate melt rate [m/a w.e.]
     dat$bmb_we = dat$bmb*rho_ice/rho_w 
 
-    # Adjust enthalpy for reference and convert units [J m-3] => [kJ kg-1]
-    dat$enth = dat$enth/rho_ice*1e-3 - E_ref 
+    # Adjust enthalpy for reference
+    dat$enth = dat$enth*1e-3 - E_ref 
 
     # Calculate enthalpy offline 
     enth = convert_to_enthalpy(dat$T_ice,dat$omega,dat$T_pmp,dat$cp)
-    enth = enth/rho_ice*1e-3 - E_ref 
+    # enth = enth/rho_ice*1e-3 - E_ref 
+    enth = enth*1e-3 - E_ref 
     
     if (! is_celcius) {
         # Convert to Celcius for plots 
@@ -50,7 +51,7 @@ if (TRUE) {
     k15b   = read.table("data/Kleiner2015/Kleiner2015_EXPB_analytic_nz401_z.dat",header=TRUE)
     k15b$zeta = k15b$z / max(k15b$z)
     k15bts = read.table("data/Kleiner2015/Kleiner2015_EXPB_extra-series_enth_b.txt",header=TRUE)
-    #k15bts$enth = k15bts$enth + (173.15-T_ref)*rho_ice*cp/rho_ice *1e-3  # Correction for T_ref=173.15 in this data 
+    #k15bts$enth = k15bts$enth + (173.15-T_ref)*cp *1e-3  # Correction for T_ref=173.15 in this data 
     k15bts$enth = k15bts$enth + (k15b$enth[1]-max(k15bts$enth))
 
 }
@@ -139,7 +140,7 @@ if (TRUE & experiment == "k15expb") {
 
     kt = length(dat$time) 
 
-    ylim = c(-0.001,1)
+    ylim = c(0,1)
     y.at = seq(0,1,by=0.1)
 
     col = c("black","#d6604d")
