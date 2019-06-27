@@ -1,8 +1,16 @@
 library(myr)
 
-rho_ice = 910.0 
-rho_w   = 1000.0 
-cp      = 2009.0        # [J kg-1 K-1]
+rho_ice  = 910.0 
+rho_w    = 1000.0 
+cp       = 2009.0        # [J kg-1 K-1]
+L_ice    = 333500.0      # [J kg-1] Latent heat
+
+convert_to_enthalpy = function(T_ice,omega,T_pmp,cp) {
+    
+    enth = (1.0-omega)*(rho_ice*cp*T_ice) + omega*(rho_w*(cp*T_pmp+L_ice))
+
+    return(enth)
+}
 
 # Load data 
 if (TRUE) {
@@ -24,6 +32,10 @@ if (TRUE) {
     # Adjust enthalpy for reference and convert units [J m-3] => [kJ kg-1]
     dat$enth = dat$enth/rho_ice*1e-3 - E_ref 
 
+    # Calculate enthalpy offline 
+    enth = convert_to_enthalpy(dat$T_ice,dat$omega,dat$T_pmp,dat$cp)
+    enth = enth/rho_ice*1e-3 - E_ref 
+    
     if (! is_celcius) {
         # Convert to Celcius for plots 
         T0 = 273.15 
@@ -155,6 +167,9 @@ if (TRUE & experiment == "k15expb") {
 
     lines(dat$enth[,kt],dat$zeta,col=col[2],lwd=lwd[2],lty=lty[2])
 
+    # Caculated offline...
+    lines(enth[,kt],dat$zeta,col=3,lwd=1,lty=1)
+
     box() 
 
     # Panel 2: T_ice #############################
@@ -198,6 +213,7 @@ if (TRUE & experiment == "k15expb") {
     graphics.off()
 
 
+    #### TIME SERIES ######
 
 
     xlim = c(0,1)

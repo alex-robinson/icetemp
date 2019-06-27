@@ -63,6 +63,7 @@ program test_icetemp
     logical            :: use_enth
     character(len=12)  :: enth_solver  
     real(prec)         :: enth_cr
+    real(prec)         :: omega_max 
     character(len=56)  :: experiment 
 
     real(prec)         :: T0_ref 
@@ -82,6 +83,7 @@ program test_icetemp
 
     use_enth        = .TRUE.        ! Use iceenth subroutines? If not, use icetemp subroutines. 
     enth_solver     = "enth"        ! "enth" or "temp" 
+    omega_max       = 0.03          ! Maximum allowed water content (fraction)
     enth_cr         = 1e-2          ! Enthalpy solver: conductivity ratio kappa_water / kappa_ice 
 
     file1D          = "test_"//trim(experiment)//".nc" 
@@ -116,7 +118,7 @@ program test_icetemp
 
             T_pmp_beta = 0.0            ! [K Pa^-1] Kleiner et al. (2015), expb
             
-            call init_k15expb(ice1,smb=0.2,T_srf=-3.0)
+            call init_k15expb(ice1,smb=0.2_prec,T_srf=-3.0_prec)
 
         case DEFAULT 
             ! EISMINT 
@@ -129,7 +131,7 @@ program test_icetemp
             !T_pmp_beta = 9.8e-8         ! [K Pa^-1] Greve and Blatter (2009) 
             T_pmp_beta = 9.7e-8         ! [K Pa^-1] EISMINT2 value (beta1 = 8.66e-4 [K m^-1])
 
-            call init_eismint_summit(ice1,smb=0.5)
+            call init_eismint_summit(ice1,smb=0.5_prec)
 
     end select 
 
@@ -190,7 +192,8 @@ program test_icetemp
 
             call calc_enth_column(ice1%vec%enth,ice1%vec%T_ice,ice1%vec%omega,ice1%bmb,ice1%Q_ice_b,ice1%H_cts,ice1%vec%T_pmp, &
                     ice1%vec%cp,ice1%vec%kt,ice1%vec%advecxy,ice1%vec%uz,ice1%vec%Q_strn,ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%T_shlf, &
-                    ice1%H_ice,ice1%H_w,ice1%f_grnd,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b,enth_cr,T0_ref,dt,enth_solver)
+                    ice1%H_ice,ice1%H_w,ice1%f_grnd,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b, &
+                    enth_cr,omega_max,T0_ref,dt,enth_solver)
 
         else 
             ! Use temperature solver 
@@ -483,7 +486,7 @@ contains
         allocate(ice%vec%omega(nz))
 
         ! Initialize zeta 
-        call calc_zeta(ice%vec%zeta,ice%vec%zeta_ac,zeta_scale,zeta_exp=2.0) 
+        call calc_zeta(ice%vec%zeta,ice%vec%zeta_ac,zeta_scale,zeta_exp=2.0_prec) 
 
         ! Define thermodynamic zeta helper derivative variables dzeta_a/dzeta_b
         call calc_dzeta_terms(ice%vec%dzeta_a,ice%vec%dzeta_b,ice%vec%zeta,ice%vec%zeta_ac)

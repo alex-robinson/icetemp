@@ -15,7 +15,7 @@ module ice_enthalpy
 contains 
 
     subroutine calc_enth_column(enth,T_ice,omega,bmb_grnd,Q_ice_b,H_cts,T_pmp,cp,kt,advecxy,uz,Q_strn,Q_b,Q_geo, &
-                    T_srf,T_shlf,H_ice,H_w,f_grnd,zeta_aa,zeta_ac,dzeta_a,dzeta_b,cr,T0,dt,solver)
+                    T_srf,T_shlf,H_ice,H_w,f_grnd,zeta_aa,zeta_ac,dzeta_a,dzeta_b,cr,omega_max,T0,dt,solver)
         ! Thermodynamics solver for a given column of ice 
         ! Note zeta=height, k=1 base, k=nz surface 
         ! Note: nz = number of vertical boundaries (including zeta=0.0 and zeta=1.0), 
@@ -50,6 +50,7 @@ contains
         real(prec), intent(IN)    :: dzeta_a(:)     ! nz_aa [--] Solver discretization helper variable ak
         real(prec), intent(IN)    :: dzeta_b(:)     ! nz_aa [--] Solver discretization helper variable bk
         real(prec), intent(IN)    :: cr             ! [--] Conductivity ratio (kappa_water / kappa_ice)
+        real(prec), intent(IN)    :: omega_max      ! [-] Maximum allowed water fraction inside ice, typically omega_max=0.02 
         real(prec), intent(IN)    :: T0             ! [K or degreesCelcius] Reference melting temperature  
         real(prec), intent(IN)    :: dt             ! [a] Time step 
         character(len=*), intent(IN) :: solver      ! "enth" or "temp" 
@@ -76,11 +77,9 @@ contains
         real(prec), allocatable :: supd(:)      ! nz_aa 
         real(prec), allocatable :: rhs(:)       ! nz_aa 
         real(prec), allocatable :: solution(:)  ! nz_aa
-        real(prec) :: fac, fac_a, fac_b, uz_aa, dzeta, dz, dz1, dz2  
-        real(prec) :: kappa_a, kappa_b, dza, dzb 
+        real(prec) :: fac, fac_a, fac_b, uz_aa, dzeta, dz
+        real(prec) :: kappa_a, kappa_b 
         logical    :: use_enth 
-
-        real(prec), parameter :: omega_max = 0.03       ! [-] Maximum allowed water fraction inside ice 
 
         nz_aa = size(zeta_aa,1)
         nz_ac = size(zeta_ac,1)
