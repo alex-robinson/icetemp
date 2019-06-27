@@ -7,9 +7,11 @@ module ice_enthalpy
 
     implicit none
     
+    real(prec), parameter :: cp_w = 4128.0      ! [J kg-1 K-1] Specific heat of water near freezing point 
+
     private
     public :: calc_enth_column 
-    public :: convert_to_enthalpy_column
+    public :: convert_to_enthalpy
     public :: convert_from_enthalpy_column
 
 contains 
@@ -105,7 +107,7 @@ contains
         ! Note: in principle, these quantities should all be available and consistent
         ! when entering the routine, but it ensures that enthalpy is defined if only 
         ! T_ice and omega are known initially.
-        call convert_to_enthalpy_column(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
+        call convert_to_enthalpy(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
 
         ! Step 0: Calculate diffusivity, set prognostic variable (T_ice or enth),
         ! and corresponding scaling factor (fac_enth)
@@ -289,7 +291,7 @@ contains
             if (omega(1) .gt. omega_max) omega(1) = omega_max 
 
             ! Finally, get enthalpy again too (to be consistent with new omega) 
-            call convert_to_enthalpy_column(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
+            call convert_to_enthalpy(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
 
             ! Calculate heat flux at ice base as enthalpy gradient * diffusivity [J a-1 m-2]
             if (H_ice .gt. 0.0_prec) then 
@@ -337,7 +339,7 @@ contains
             where (T_ice .ge. T_pmp) omega = 0.01 
 
             ! Finally, get enthalpy too 
-            call convert_to_enthalpy_column(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
+            call convert_to_enthalpy(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
 
             ! Calculate heat flux at ice base as temperature gradient * conductivity [J a-1 m-2]
             if (H_ice .gt. 0.0_prec) then 
@@ -365,7 +367,7 @@ contains
 
     ! ========== ENTHALPY ==========================================
 
-    elemental subroutine convert_to_enthalpy_column(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
+    elemental subroutine convert_to_enthalpy(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
         ! Given temperature and water content, calculate enthalpy.
 
         implicit none 
@@ -383,7 +385,7 @@ contains
         
         return 
 
-    end subroutine convert_to_enthalpy_column
+    end subroutine convert_to_enthalpy
 
     subroutine convert_from_enthalpy_column(enth,T_ice,omega,T_pmp,cp,rho_ice,rho_w,L_ice)
         ! Given enthalpy, calculate temperature and water content. 

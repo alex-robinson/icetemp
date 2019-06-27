@@ -149,11 +149,11 @@ program test_icetemp
                                        robin%H_ice,robin%T_srf,robin%smb,robin%Q_geo,is_float=robin%f_grnd.eq.0.0)
 
     ! Calculate initial enthalpy (ice1)
-    call convert_to_enthalpy_column(ice1%vec%enth,ice1%vec%T_ice,ice1%vec%omega,ice1%vec%T_pmp, &
+    call convert_to_enthalpy(ice1%vec%enth,ice1%vec%T_ice,ice1%vec%omega,ice1%vec%T_pmp, &
                                                                         ice1%vec%cp,rho_ice,rho_w,L_ice)
 
     ! Calculate initial enthalpy (robin)
-    call convert_to_enthalpy_column(robin%vec%enth,robin%vec%T_ice,robin%vec%omega,robin%vec%T_pmp, &
+    call convert_to_enthalpy(robin%vec%enth,robin%vec%T_ice,robin%vec%omega,robin%vec%T_pmp, &
                                                                         robin%vec%cp,rho_ice,rho_w,L_ice)
 
 !     ! Write Robin solution 
