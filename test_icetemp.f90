@@ -8,6 +8,8 @@ program test_icetemp
     use ice_enthalpy  
     use ice_age 
 
+    use ice_column_interp 
+
     implicit none 
 
     type icesheet_vectors
@@ -50,6 +52,8 @@ program test_icetemp
     type(icesheet) :: robin 
     type(icesheet) :: diff 
     
+    type(ice_column_hires_type) :: enth_hires
+        
     ! Local variables
     real(prec)         :: t_start, t_end, dt, time  
     integer            :: n, ntot 
@@ -65,6 +69,9 @@ program test_icetemp
     real(prec)         :: enth_cr
     real(prec)         :: omega_max 
     character(len=56)  :: experiment 
+
+    logical            :: use_hires 
+    integer            :: hires_fac 
 
     real(prec)         :: T0_ref 
 
@@ -85,6 +92,9 @@ program test_icetemp
     enth_solver     = "enth"        ! "enth" or "temp" 
     omega_max       = 0.03          ! Maximum allowed water content (fraction)
     enth_cr         = 1e-3          ! Enthalpy solver: conductivity ratio kappa_water / kappa_ice 
+
+    use_hires       = .TRUE. 
+    hires_fac       = 2.0 
 
     file1D          = "test_"//trim(experiment)//".nc" 
     
@@ -173,6 +183,13 @@ program test_icetemp
 
     ! Assume H_cts is also zero to start
     ice1%H_cts = 0.0 
+
+
+    if (use_hires) then 
+        ! Initialize hires object 
+        call ice_column_hires_init(enth_hires,nz,hires_fac,zeta_scale=zeta_scale,zeta_exp=2.0_prec)
+    end if 
+
 
     ! Loop over time steps and perform thermodynamic calculations
     do n = 1, ntot 

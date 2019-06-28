@@ -260,8 +260,7 @@ contains
             ! Harmonic average: doesn't work well for the CTS
             !kappa_a = 2.0_prec / (1.0_prec/kappa_aa(k-1) + 1.0_prec/kappa_aa(k))
             !kappa_b = 2.0_prec / (1.0_prec/kappa_aa(k+1) + 1.0_prec/kappa_aa(k))
-
-            write(*,*) k, kappa_a, kappa_aa(k), kappa_b 
+            !write(*,*) k, kappa_a, kappa_aa(k), kappa_b 
 
             ! Vertical distance for centered difference advection scheme
             dz      =  H_ice*(zeta_aa(k+1)-zeta_aa(k-1))

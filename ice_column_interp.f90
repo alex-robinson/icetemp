@@ -83,21 +83,23 @@ contains
 
     end subroutine ice_column_hires_interptohi
 
-    subroutine ice_column_hires_init(dat,nz_aa,nz_ac,fac,zeta_scale,zeta_exp)
+    subroutine ice_column_hires_init(dat,nz_aa,fac,zeta_scale,zeta_exp)
 
         implicit none 
 
         type(ice_column_hires_type), intent(INOUT) :: dat 
-        integer,          intent(IN) :: nz_aa 
-        integer,          intent(IN) :: nz_ac 
+        integer,          intent(IN) :: nz_aa  
         integer,          intent(IN) :: fac 
         character(len=*), intent(IN) :: zeta_scale 
         real(prec),       intent(IN) :: zeta_exp 
 
-        ! Local variables 
+        ! Local variables
+        integer :: nz_ac  
         integer :: nz_aa_hi
         integer :: nz_ac_hi 
 
+        nz_ac = nz_aa - 1 
+        
         if (fac .lt. 1) then 
             write(*,*) "ice_column_hires_init:: Error: factor scaling only works for fac > 1."
             stop 
