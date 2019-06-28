@@ -54,6 +54,9 @@ $(objdir)/solver_tridiagonal.o: $(srcdir)/solver_tridiagonal.f90 $(objdir)/defs.
 $(objdir)/thermodynamics.o : $(srcdir)/thermodynamics.f90 $(objdir)/defs.o
 	$(FC) $(DFLAGS) $(FFLAGS) -c -o $@ $<
 
+$(objdir)/ice_column_interp.o : $(srcdir)/ice_column_interp.f90 $(objdir)/defs.o
+	$(FC) $(DFLAGS) $(FFLAGS) -c -o $@ $<
+
 $(objdir)/ice_temperature.o : $(srcdir)/ice_temperature.f90 $(objdir)/defs.o \
 					  $(objdir)/solver_tridiagonal.o $(objdir)/thermodynamics.o
 	$(FC) $(DFLAGS) $(FFLAGS) -c -o $@ $<
@@ -73,7 +76,8 @@ $(objdir)/ice_age.o : $(srcdir)/ice_age.f90 $(objdir)/defs.o \
 ###############################################
 
 test_icetemp : $(objdir)/ncio.o $(objdir)/defs.o $(objdir)/solver_tridiagonal.o \
-				$(objdir)/thermodynamics.o $(objdir)/ice_temperature.o $(objdir)/ice_enthalpy.o $(objdir)/ice_age.o
+				$(objdir)/thermodynamics.o $(objdir)/ice_temperature.o $(objdir)/ice_enthalpy.o \
+				$(objdir)/ice_age.o $(objdir)/ice_column_interp.o
 		$(FC) $(DLAGS) $(FFLAGS) $(INC_COORD) $(INC_LIS) -o $(bindir)/test_icetemp.x test_icetemp.f90 \
 			$(LFLAGS) $^
 		@echo " "
