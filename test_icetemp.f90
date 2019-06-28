@@ -75,7 +75,7 @@ program test_icetemp
     
     ! General options
     zeta_scale      = "linear"      ! "linear", "exp", "tanh"
-    nz              = 21           ! [--] Number of ice sheet points (aa-nodes + base + surface)
+    nz              = 22            ! [--] Number of ice sheet points (aa-nodes + base + surface)
     is_celcius      = .FALSE. 
 
     age_method      = "expl"        ! "expl" or "impl"
@@ -90,7 +90,7 @@ program test_icetemp
     
     if (trim(experiment) .eq. "k15expa" .or. trim(experiment) .eq. "k15expb") then 
         ! Use a more precise filename to specify cr value and dz
-        write(file1D,"(a,e8.2,a,e8.2,a)") "test_"//trim(experiment)//"_cr", enth_cr, "_dz", (200.0/(nz-1)), ".nc"
+        write(file1D,"(a,e8.2,a,e8.2,a)") "test_"//trim(experiment)//"_cr", enth_cr, "_dz", (200.0/(nz-2)), ".nc"
     end if 
 
     ! ===============================================================
@@ -118,7 +118,7 @@ program test_icetemp
 
             t_start = 0.0       ! [yr]
             t_end   = 1e3       ! [yr]
-            dt      = 0.1       ! [yr]
+            dt      = 1.0       ! [yr]
             dt_out  = 20.0      ! [yr] 
 
             T_pmp_beta = 0.0            ! [K Pa^-1] Kleiner et al. (2015), expb
@@ -197,6 +197,12 @@ program test_icetemp
                     ice1%vec%cp,ice1%vec%kt,ice1%vec%advecxy,ice1%vec%uz,ice1%vec%Q_strn,ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%T_shlf, &
                     ice1%H_ice,ice1%H_w,ice1%f_grnd,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b, &
                     enth_cr,omega_max,T0_ref,dt,enth_solver)
+
+!             ! Corrector step (cold only) - experimental
+!             call calc_enth_column(ice1%vec%enth,ice1%vec%T_ice,ice1%vec%omega,ice1%bmb,ice1%Q_ice_b,ice1%H_cts,ice1%vec%T_pmp, &
+!                     ice1%vec%cp,ice1%vec%kt,ice1%vec%advecxy,ice1%vec%uz,ice1%vec%Q_strn,ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%T_shlf, &
+!                     ice1%H_ice,ice1%H_w,ice1%f_grnd,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b, &
+!                     enth_cr,omega_max,T0_ref,dt,enth_solver,cold=.TRUE.)
 
         else 
             ! Use temperature solver 

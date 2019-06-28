@@ -47,15 +47,32 @@ if (TRUE) {
     # Load data from Exp. A
     dat_k15expa = load_icetemp(paste0("test_k15expa.nc"))
 
-    k15expb_filenames = c(
-    "test_k15expb_cr0.10E+00_dz0.10E+02.nc",
-    "test_k15expb_cr0.10E+00_dz0.50E+00.nc",
-    "test_k15expb_cr0.10E-01_dz0.10E+02.nc",
-    "test_k15expb_cr0.10E-01_dz0.50E+00.nc",
-    "test_k15expb_cr0.10E-02_dz0.10E+02.nc",   # qref2
-    "test_k15expb_cr0.10E-02_dz0.50E+00.nc",   # qref1
-    "test_k15expb_cr0.10E-03_dz0.10E+02.nc",
-    "test_k15expb_cr0.10E-03_dz0.50E+00.nc") 
+    dz1 = 0.5  # m 
+    dz2 = 10.0  # m 
+
+    if (dz2 == 10.0) {
+        # dz=0.5m and dz=10m
+        k15expb_filenames = c(
+        "test_k15expb_cr0.10E+00_dz0.10E+02.nc",
+        "test_k15expb_cr0.10E+00_dz0.50E+00.nc",
+        "test_k15expb_cr0.10E-01_dz0.10E+02.nc",
+        "test_k15expb_cr0.10E-01_dz0.50E+00.nc",
+        "test_k15expb_cr0.10E-02_dz0.10E+02.nc",   # qref2
+        "test_k15expb_cr0.10E-02_dz0.50E+00.nc",   # qref1
+        "test_k15expb_cr0.10E-03_dz0.10E+02.nc",
+        "test_k15expb_cr0.10E-03_dz0.50E+00.nc") 
+    } else {
+        # dz=0.5m and dz=1m
+        k15expb_filenames = c(
+        "test_k15expb_cr0.10E+00_dz0.10E+01.nc",
+        "test_k15expb_cr0.10E+00_dz0.50E+00.nc",
+        "test_k15expb_cr0.10E-01_dz0.10E+01.nc",
+        "test_k15expb_cr0.10E-01_dz0.50E+00.nc",
+        "test_k15expb_cr0.10E-02_dz0.10E+01.nc",   # qref2
+        "test_k15expb_cr0.10E-02_dz0.50E+00.nc",   # qref1
+        "test_k15expb_cr0.10E-03_dz0.10E+01.nc",
+        "test_k15expb_cr0.10E-03_dz0.50E+00.nc") 
+    }
 
     n_expb = length(k15expb_filenames)
 
@@ -234,7 +251,8 @@ if (TRUE & experiment == "k15expb") {
     lines(dat$omega[,kt]*100,dat$zeta,col=col[2],lwd=lwd[2],lty=lty[2])
     lines(dat2$omega[,kt2]*100,dat2$zeta,  col=col[3],lwd=lwd[3],lty=lty[3])
     
-    legend("topright",bty="n",inset=0.01,col=col,lwd=lwd,lty=lty,c("Kleiner et al. (2015)","Yelmo dz=0.5m","Yelmo dz=10m"))
+    legend("topright",bty="n",inset=0.01,col=col,lwd=lwd,lty=lty,
+            c("Kleiner et al. (2015)","Yelmo dz=0.5m",paste0("Yelmo dz=",dz2,"m")))
 
     box() 
     
@@ -261,9 +279,9 @@ if (TRUE & experiment == "k15expb") {
         kt_now = length(tmp$time)
         col_now = "grey80"
         if (tmp$dz==0.5) col_now = col[2]
-        if (tmp$dz > 8)  col_now = col[3]
+        if (abs(tmp$dz-dz2)/dz2 < 0.1)  col_now = col[3]
         points(tmp$enth_cr,tmp$H_cts[kt_now],col=col_now,pch=20,cex=1.5)
-        #cat(tmp$enth_cr,"  ",tmp$H_cts[kt_now],"\n")
+        #cat(abs(tmp$dz-dz2)/dz2,"  ",tmp$dz,"  ",tmp$enth_cr,"  ",tmp$H_cts[kt_now],"\n")
     }
     
     points(dat$enth_cr,dat$H_cts[kt],col=col[2],pch=20,cex=1.4)

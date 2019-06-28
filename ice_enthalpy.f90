@@ -12,11 +12,12 @@ module ice_enthalpy
     public :: convert_to_enthalpy
     public :: convert_from_enthalpy_column
     public :: calc_dzeta_terms
-    
+
 contains 
 
-    subroutine calc_enth_column(enth,T_ice,omega,bmb_grnd,Q_ice_b,H_cts,T_pmp,cp,kt,advecxy,uz,Q_strn,Q_b,Q_geo, &
-                    T_srf,T_shlf,H_ice,H_w,f_grnd,zeta_aa,zeta_ac,dzeta_a,dzeta_b,cr,omega_max,T0,dt,solver)
+    subroutine calc_enth_column(enth,T_ice,omega,bmb_grnd,Q_ice_b,H_cts,T_pmp,cp,kt,advecxy,uz, &
+                                Q_strn,Q_b,Q_geo,T_srf,T_shlf,H_ice,H_w,f_grnd,zeta_aa,zeta_ac, &
+                                dzeta_a,dzeta_b,cr,omega_max,T0,dt,solver,cold)
         ! Thermodynamics solver for a given column of ice 
         ! Note zeta=height, k=1 base, k=nz surface 
         ! Note: nz = number of vertical boundaries (including zeta=0.0 and zeta=1.0), 
@@ -55,7 +56,8 @@ contains
         real(prec), intent(IN)    :: T0             ! [K or degreesCelcius] Reference melting temperature  
         real(prec), intent(IN)    :: dt             ! [a] Time step 
         character(len=*), intent(IN) :: solver      ! "enth" or "temp" 
-        
+        logical,    intent(IN), optional :: cold    ! Only solve the cold part of the column (second step of two step method)
+
         ! Local variables 
         integer    :: k, nz_aa, nz_ac
         real(prec) :: Q_geo_now, ghf_conv 
@@ -81,6 +83,7 @@ contains
         real(prec) :: fac, fac_a, fac_b, uz_aa, dzeta, dz
         real(prec) :: kappa_a, kappa_b 
         logical    :: use_enth 
+        logical    :: cold_only 
 
         nz_aa = size(zeta_aa,1)
         nz_ac = size(zeta_ac,1)
@@ -99,6 +102,21 @@ contains
         use_enth = .TRUE. 
         if (trim(solver) .eq. "temp") use_enth = .FALSE. 
 
+        ! Determine if only the cold part of the column should be solved
+        ! (only available for the enthalpy solver)
+        cold_only = .FALSE. 
+        if (present(cold)) cold_only = cold 
+
+        if (cold_only .and. (.not. use_enth)) then 
+            write(*,*) "calc_enth_column:: Error: 'cold' corrector step can only be used with the 'enth' solver."
+            stop "Program terminated."
+        end if 
+
+        if (cold_only) then 
+            write(*,*) "calc_enth_column:: Error: 'cold' corrector step not yet operational."
+            stop 
+        end if 
+        
         ! Get geothermal heat flux in proper units 
         Q_geo_now = Q_geo*1e-3*sec_year   ! [mW m-2] => [J m-2 a-1]
 
@@ -106,7 +124,7 @@ contains
         ! Note: in principle, these quantities should all be available and consistent
         ! when entering the routine, but it ensures that enthalpy is defined if only 
         ! T_ice and omega are known initially.
-        call convert_to_enthalpy(enth,T_ice,omega,T_pmp,cp,L_ice)
+        !call convert_to_enthalpy(enth,T_ice,omega,T_pmp,cp,L_ice)
 
         ! Step 0: Calculate diffusivity, set prognostic variable (T_ice or enth),
         ! and corresponding scaling factor (fac_enth)
@@ -239,6 +257,12 @@ contains
             kappa_a = kappa_aa(k)
             kappa_b = kappa_aa(k+1) 
 
+            ! Harmonic average: doesn't work well for the CTS
+            !kappa_a = 2.0_prec / (1.0_prec/kappa_aa(k-1) + 1.0_prec/kappa_aa(k))
+            !kappa_b = 2.0_prec / (1.0_prec/kappa_aa(k+1) + 1.0_prec/kappa_aa(k))
+
+            write(*,*) k, kappa_a, kappa_aa(k), kappa_b 
+
             ! Vertical distance for centered difference advection scheme
             dz      =  H_ice*(zeta_aa(k+1)-zeta_aa(k-1))
             
@@ -258,6 +282,42 @@ contains
         diag(nz_aa) = 1.0_prec
         supd(nz_aa) = 0.0_prec
         rhs(nz_aa)  = min(T_srf,T0) * fac_enth(nz_aa)
+
+
+        ! =====================================================
+        ! cold-only check 
+        if (cold_only .and. count(T_ice .eq. T_pmp) .gt. 1) then 
+            ! Overwrite column choices to only solve for the cold part
+            ! of the column, if both temperate and cold zones exist
+
+            do k = 1, nz_aa-1
+
+                if (T_ice(k) .ge. T_pmp(k)) then 
+                    ! Temperate region, prescribe solution
+
+                    subd(k) = 0.0_prec
+                    diag(k) = 1.0_prec
+                    supd(k) = 0.0_prec
+                    rhs(k)  = var(k)
+                
+                else if (T_ice(k) .lt. T_pmp(k) .and. T_ice(k-1) .ge. T_pmp(k)) then 
+                    ! CTS layer, boundary cold condition: dE/dz = 0
+                    ! Note: this probably doesn't work properly now, since
+                    ! the bottom layer is no longer the boundary ac-node, but
+                    ! rather the aa-node one layer below. Re-derive.
+                    subd(k) =  0.0_prec
+                    diag(k) =  1.0_prec
+                    supd(k) = -1.0_prec
+                    rhs(k)  =  0.0_prec
+                    
+                end if 
+
+            end do 
+
+        end if 
+        ! End cold-only check 
+        ! =====================================================
+
 
 
         ! == Call solver ==
@@ -456,6 +516,64 @@ contains
     end subroutine convert_from_enthalpy_column
 
     subroutine calc_enth_diffusivity(kappa,T_ice,omega,enth,T_pmp,cp,kt,rho_ice,rho_w,L_ice,cr)
+        ! Calculate the enthalpy vertical diffusivity for use with the diffusion solver:
+        ! When water is present in the layer, set kappa=kappa_therm, else kappa=kappa_cold 
+
+        implicit none 
+
+        real(prec), intent(OUT) :: kappa(:)         ! [nz_aa]
+        real(prec), intent(IN)  :: T_ice(:)         ! [nz_aa]
+        real(prec), intent(IN)  :: omega(:)         ! [nz_aa]
+        real(prec), intent(IN)  :: enth(:)          ! [nz_aa]
+        real(prec), intent(IN)  :: T_pmp(:)         ! [nz_aa]
+        real(prec), intent(IN)  :: cp(:)
+        real(prec), intent(IN)  :: kt(:)  
+        real(prec), intent(IN)  :: rho_ice
+        real(prec), intent(IN)  :: rho_w
+        real(prec), intent(IN)  :: L_ice
+        real(prec), intent(IN)  :: cr 
+
+        ! Local variables
+        integer     :: k, nz_aa  
+        real(prec)  :: denth, denth_temp 
+        real(prec)  :: f_avg 
+        real(prec)  :: kappa_cold       ! Cold diffusivity 
+        real(prec)  :: kappa_temp       ! Temperate diffusivity 
+        real(prec), allocatable :: enth_temp(:) 
+        
+        nz_aa = size(enth)
+
+        allocate(enth_temp(nz_aa))
+
+        ! First, define enthalpy associated with temperature only for the whole column 
+        ! (for cold ice enth = enth_temp, while for temperate ice enth > enth_temp) 
+        !enth_temp = (1.0_prec-omega)*rho_ice*cp*T_ice
+        enth_temp = (1.0_prec-omega)*cp*T_ice
+         
+        ! Compute factors relating the temperature gradient to the total enthalpy gradient.
+        ! Use these factors to average the diffusivity between the cold and temperate kappa values.
+
+        kappa = 0.0 
+
+        do k = 1, nz_aa
+
+            ! Determine kappa_cold and kappa_temp for this level 
+            kappa_cold = kt(k) / (rho_ice*cp(k))
+            kappa_temp = cr * kappa_cold 
+
+            if (omega(k) .gt. 0.0) then 
+                kappa(k) = kappa_temp 
+            else 
+                kappa(k) = kappa_cold 
+            end if 
+
+        end do
+
+        return 
+
+    end subroutine calc_enth_diffusivity
+    
+    subroutine calc_enth_diffusivity0(kappa,T_ice,omega,enth,T_pmp,cp,kt,rho_ice,rho_w,L_ice,cr)
         ! Calculate the enthalpy vertical diffusivity for use with the diffusion solver 
         ! Note: this routine was ported from MALIv6 (Hoffman et al., 2018), 
         ! which appears to have been ported from CISMv2.1. It appears that
@@ -581,7 +699,7 @@ contains
 
         return 
 
-    end subroutine calc_enth_diffusivity
+    end subroutine calc_enth_diffusivity0
 
     function calc_cts_height(enth,T_pmp,cp,H_ice,zeta) result(H_cts)
         ! Calculate the height of the cold-temperate transition surface (m)
