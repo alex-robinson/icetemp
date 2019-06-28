@@ -82,7 +82,7 @@ program test_icetemp
     
     ! General options
     zeta_scale      = "linear"      ! "linear", "exp", "tanh"
-    nz              = 22            ! [--] Number of ice sheet points (aa-nodes + base + surface)
+    nz              = 42            ! [--] Number of ice sheet points (aa-nodes + base + surface)
     is_celcius      = .FALSE. 
 
     age_method      = "expl"        ! "expl" or "impl"
@@ -128,7 +128,7 @@ program test_icetemp
 
             t_start = 0.0       ! [yr]
             t_end   = 1e3       ! [yr]
-            dt      = 1.0       ! [yr]
+            dt      = 0.5       ! [yr]
             dt_out  = 20.0      ! [yr] 
 
             T_pmp_beta = 0.0            ! [K Pa^-1] Kleiner et al. (2015), expb

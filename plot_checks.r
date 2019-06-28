@@ -48,7 +48,7 @@ if (TRUE) {
     dat_k15expa = load_icetemp(paste0("test_k15expa.nc"))
 
     dz1 = 0.5  # m 
-    dz2 = 10.0  # m 
+    dz2 = 5.0  # m 
 
     if (dz2 == 10.0) {
         # dz=0.5m and dz=10m
@@ -60,6 +60,17 @@ if (TRUE) {
         "test_k15expb_cr0.10E-02_dz0.10E+02.nc",   # qref2
         "test_k15expb_cr0.10E-02_dz0.50E+00.nc",   # qref1
         "test_k15expb_cr0.10E-03_dz0.10E+02.nc",
+        "test_k15expb_cr0.10E-03_dz0.50E+00.nc") 
+    } else if (dz2 == 5.0) {
+        # dz=0.5m and dz=5m
+        k15expb_filenames = c(
+        "test_k15expb_cr0.10E+00_dz0.50E+01.nc",
+        "test_k15expb_cr0.10E+00_dz0.50E+00.nc",
+        "test_k15expb_cr0.10E-01_dz0.50E+01.nc",
+        "test_k15expb_cr0.10E-01_dz0.50E+00.nc",
+        "test_k15expb_cr0.10E-02_dz0.50E+01.nc",   # qref2
+        "test_k15expb_cr0.10E-02_dz0.50E+00.nc",   # qref1
+        "test_k15expb_cr0.10E-03_dz0.50E+01.nc",
         "test_k15expb_cr0.10E-03_dz0.50E+00.nc") 
     } else {
         # dz=0.5m and dz=1m
