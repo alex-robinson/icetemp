@@ -735,7 +735,7 @@ contains
         if (k .gt. nz) then 
             ! Whole column is temperate
             H_cts = H_ice
-        else if (k .eq. 1) then 
+        else if (k .le. 1) then 
             ! Whole column is cold 
             H_cts = 0.0 
         else 
@@ -746,6 +746,7 @@ contains
             ! E(k0) + dE*f_lin = Epmp(k0) + dEpmp*f_lin 
             ! f_lin = (Epmp(k0)-E(k0)) / (dE - dEpmp)
             f_lin = (enth_pmp(k0)-enth(k0)) / ( (enth(k)-enth(k0)) - (enth_pmp(k)-enth_pmp(k0)) )
+            if (f_lin .lt. 1e-2) f_lin = 0.0 
 
             H_cts = H_ice * (zeta(k0) + f_lin*(zeta(k)-zeta(k0)))
 
