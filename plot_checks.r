@@ -240,8 +240,8 @@ if (TRUE & experiment == "k15expb") {
     par(new=TRUE,plt=c(0.45,0.90,0.40,0.75),cex.axis=0.8)
     xlim = c(0.8e-4,2e-1)
     x.at = c(1e-4,1e-3,1e-2,1e-1)
-    ylim = c(15,40)
-    y.at = c(20,25,30,35)
+    ylim = c(15,42)
+    y.at = c(20,25,30,35,40)
 
     plot(xlim,ylim,type="n",ann=FALSE,axes=FALSE,log="x")
     rect(xlim[1],ylim[1],xlim[2],ylim[2],col="white",bg="white")
@@ -261,7 +261,7 @@ if (TRUE & experiment == "k15expb") {
         if (tmp$dz==0.5) col_now = col[2]
         if (tmp$dz > 8)  col_now = col[3]
         points(tmp$enth_cr,tmp$H_cts[kt_now],col=col_now,pch=20,cex=1.5)
-        
+        #cat(tmp$enth_cr,"  ",tmp$H_cts[kt_now],"\n")
     }
     
     points(dat$enth_cr,dat$H_cts[kt],col=col[2],pch=20,cex=1.4)
