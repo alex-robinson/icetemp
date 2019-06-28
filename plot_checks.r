@@ -169,7 +169,7 @@ if (TRUE & experiment == "k15expb") {
     y.at = seq(0,1,by=0.1)
 
     col = c("#ef8a62","black","#99d8c9")          # reddish color: "#d6604d"
-    lwd = c(4.0,2.0,1.5)
+    lwd = c(4.0,2.5,1.6)
     lty = c(1,1,1)
 
     myfigure(fldr,"k15expb",asp=2.3,pointsize=12,type=ptype)
@@ -230,7 +230,7 @@ if (TRUE & experiment == "k15expb") {
     lines(k15b$omega,k15b$zeta,col=col[1],lwd=lwd[1],lty=lty[1])
 
     lines(dat$omega[,kt]*100,dat$zeta,col=col[2],lwd=lwd[2],lty=lty[2])
-    lines(dat2$omega[,kt2],dat2$zeta,  col=col[3],lwd=lwd[3],lty=lty[3])
+    lines(dat2$omega[,kt2]*100,dat2$zeta,  col=col[3],lwd=lwd[3],lty=lty[3])
     
     legend("topright",bty="n",inset=0.01,col=col,lwd=lwd,lty=lty,c("Kleiner et al. (2015)","Yelmo dz=0.5m","Yelmo dz=10m"))
 
