@@ -9,7 +9,7 @@ module ice_temperature
     
     private
     public :: calc_temp_column 
-    public :: calc_dzeta_terms
+    !public :: calc_dzeta_terms
 
 contains 
 

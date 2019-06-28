@@ -57,8 +57,10 @@ if (TRUE) {
     "test_k15expb_cr0.10E-03_dz0.10E+02.nc",
     "test_k15expb_cr0.10E-03_dz0.50E+00.nc") 
 
+    n_expb = length(k15expb_filenames)
+
     dats_k15expb = list() 
-    for (q in 1:length(k15expb_filenames)) {
+    for (q in 1:n_expb) {
         dats_k15expb[[q]] = load_icetemp(k15expb_filenames[q])
     }
 

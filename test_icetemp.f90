@@ -84,7 +84,7 @@ program test_icetemp
     use_enth        = .TRUE.        ! Use iceenth subroutines? If not, use icetemp subroutines. 
     enth_solver     = "enth"        ! "enth" or "temp" 
     omega_max       = 0.03          ! Maximum allowed water content (fraction)
-    enth_cr         = 1e-2          ! Enthalpy solver: conductivity ratio kappa_water / kappa_ice 
+    enth_cr         = 1e-3          ! Enthalpy solver: conductivity ratio kappa_water / kappa_ice 
 
     file1D          = "test_"//trim(experiment)//".nc" 
     

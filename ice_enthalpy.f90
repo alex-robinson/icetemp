@@ -11,7 +11,8 @@ module ice_enthalpy
     public :: calc_enth_column 
     public :: convert_to_enthalpy
     public :: convert_from_enthalpy_column
-
+    public :: calc_dzeta_terms
+    
 contains 
 
     subroutine calc_enth_column(enth,T_ice,omega,bmb_grnd,Q_ice_b,H_cts,T_pmp,cp,kt,advecxy,uz,Q_strn,Q_b,Q_geo, &
@@ -185,12 +186,20 @@ contains
 
                 if (use_enth .and. T_ice(2) .ge. T_pmp(2)) then 
                     ! Layer above base is also temperate (with water likely present in the ice),
-                    ! set basal enthalpy equal to enthalpy above (following MALIv6 implementation)
+                    ! set K0 dE/dz = 0. To do so, set basal enthalpy equal to enthalpy above
+                    ! (following MALIv6 implementation)
 
                     subd(1) =  0.0_prec
                     diag(1) =  1.0_prec
                     supd(1) = -1.0_prec
                     rhs(1)  =  0.0_prec
+    
+                    ! Testing implementation of second-order upwind derivative,
+                    ! using var(3) value from previous timestep (doesn't work)
+!                     subd(1) =  0.0_prec
+!                     diag(1) = -3.0_prec
+!                     supd(1) =  4.0_prec
+!                     rhs(1)  =  var(3)
 
                 else 
                     ! Set enthalpy/temp equal to pressure melting point value 
