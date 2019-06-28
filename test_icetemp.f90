@@ -53,7 +53,7 @@ program test_icetemp
     type(icesheet) :: diff 
     
     type(ice_column_hires_type) :: enth_hires
-        
+
     ! Local variables
     real(prec)         :: t_start, t_end, dt, time  
     integer            :: n, ntot 
@@ -210,16 +210,36 @@ program test_icetemp
         if (use_enth) then 
             ! Use enthalpy solver 
 
-            call calc_enth_column(ice1%vec%enth,ice1%vec%T_ice,ice1%vec%omega,ice1%bmb,ice1%Q_ice_b,ice1%H_cts,ice1%vec%T_pmp, &
-                    ice1%vec%cp,ice1%vec%kt,ice1%vec%advecxy,ice1%vec%uz,ice1%vec%Q_strn,ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%T_shlf, &
-                    ice1%H_ice,ice1%H_w,ice1%f_grnd,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b, &
+            if (use_hires) then 
+
+                ! First interpolate to higher resolution 
+                call ice_column_hires_interptohi(enth_hires,ice1%vec%enth,ice1%vec%T_ice,ice1%vec%omega,ice1%vec%T_pmp, &
+                        ice1%vec%cp,ice1%vec%kt,ice1%vec%advecxy,ice1%vec%uz,ice1%vec%Q_strn,ice1%vec%zeta,ice1%vec%zeta_ac)
+
+                ! Then call enthalpy routine 
+                call calc_enth_column(enth_hires%enth,enth_hires%T_ice,enth_hires%omega,ice1%bmb,ice1%Q_ice_b,ice1%H_cts,enth_hires%T_pmp, &
+                    enth_hires%cp,enth_hires%kt,enth_hires%advecxy,enth_hires%uz,enth_hires%Q_strn,ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%T_shlf, &
+                    ice1%H_ice,ice1%H_w,ice1%f_grnd,enth_hires%zeta_aa,enth_hires%zeta_ac,enth_hires%dzeta_a,enth_hires%dzeta_b, &
                     enth_cr,omega_max,T0_ref,dt,enth_solver)
+
+                ! Then aggregate to lower resolution 
+                call ice_column_hires_interptolo(ice1%vec%enth,ice1%vec%T_ice,ice1%vec%omega,enth_hires,ice1%vec%zeta,ice1%vec%zeta_ac)
+
+            else 
+                ! Call enthalpy at normal resolution 
+
+                call calc_enth_column(ice1%vec%enth,ice1%vec%T_ice,ice1%vec%omega,ice1%bmb,ice1%Q_ice_b,ice1%H_cts,ice1%vec%T_pmp, &
+                        ice1%vec%cp,ice1%vec%kt,ice1%vec%advecxy,ice1%vec%uz,ice1%vec%Q_strn,ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%T_shlf, &
+                        ice1%H_ice,ice1%H_w,ice1%f_grnd,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b, &
+                        enth_cr,omega_max,T0_ref,dt,enth_solver)
 
 !             ! Corrector step (cold only) - experimental
 !             call calc_enth_column(ice1%vec%enth,ice1%vec%T_ice,ice1%vec%omega,ice1%bmb,ice1%Q_ice_b,ice1%H_cts,ice1%vec%T_pmp, &
 !                     ice1%vec%cp,ice1%vec%kt,ice1%vec%advecxy,ice1%vec%uz,ice1%vec%Q_strn,ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%T_shlf, &
 !                     ice1%H_ice,ice1%H_w,ice1%f_grnd,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b, &
 !                     enth_cr,omega_max,T0_ref,dt,enth_solver,cold=.TRUE.)
+            
+            end if 
 
         else 
             ! Use temperature solver 
