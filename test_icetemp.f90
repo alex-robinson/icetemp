@@ -75,7 +75,7 @@ program test_icetemp
     
     ! General options
     zeta_scale      = "linear"      ! "linear", "exp", "tanh"
-    nz              = 401           ! [--] Number of ice sheet points (aa-nodes + base + surface)
+    nz              = 41           ! [--] Number of ice sheet points (aa-nodes + base + surface)
     is_celcius      = .FALSE. 
 
     age_method      = "expl"        ! "expl" or "impl"
@@ -84,10 +84,15 @@ program test_icetemp
     use_enth        = .TRUE.        ! Use iceenth subroutines? If not, use icetemp subroutines. 
     enth_solver     = "enth"        ! "enth" or "temp" 
     omega_max       = 0.03          ! Maximum allowed water content (fraction)
-    enth_cr         = 1e-2          ! Enthalpy solver: conductivity ratio kappa_water / kappa_ice 
+    enth_cr         = 1e-4          ! Enthalpy solver: conductivity ratio kappa_water / kappa_ice 
 
     file1D          = "test_"//trim(experiment)//".nc" 
     
+    if (trim(experiment) .eq. "k15expa" .or. trim(experiment) .eq. "k15expb") then 
+        ! Use a more precise filename to specify cr value and dz
+        write(file1D,"(a,e8.2,a,e8.2,a)") "test_"//trim(experiment)//"_cr", enth_cr, "_dz", (200.0/(nz-1)), ".nc"
+    end if 
+
     ! ===============================================================
 
     T0_ref = T0 
@@ -534,6 +539,10 @@ contains
         call nc_write_dim(filename,"zeta",    x=zeta,    units="1")
         call nc_write_dim(filename,"zeta_ac", x=zeta_ac, units="1")
         call nc_write_dim(filename,"time",  x=time_init,dx=1.0_prec,nx=1,units="years",unlimited=.TRUE.)
+        call nc_write_dim(filename,"pt",    x=1.0,    units="1")
+
+        ! Write some constants 
+        call nc_write(filename,"enth_cr",enth_cr,dim1="pt")
 
         return
 

@@ -2,41 +2,31 @@ library(myr)
 
 rho_ice  = 910.0 
 rho_w    = 1000.0 
-cp       = 2009.0        # [J kg-1 K-1]
-L_ice    = 333500.0      # [J kg-1] Latent heat
+cp       = 2009.0           # [J kg-1 K-1]
+L_ice    = 333500.0         # [J kg-1] Latent heat
 
-convert_to_enthalpy = function(T_ice,omega,T_pmp,cp) {
+# For comparison with Kleiner et al. (2015), use this T_ref offset for enthalpy==0.0
+T_ref = 223.15              # [K] 
+E_ref = (T_ref*cp)*1e-3     # [kJ kg-1]
+
+# Set this flag to True if data from icetemp will be in units of Celcius to start with     
+is_celcius = FALSE 
     
-    enth = (1.0-omega)*(rho_ice*cp*T_ice) + omega*(rho_w*(cp*T_pmp+L_ice))
 
-    return(enth)
-}
-
-# Load data 
-if (TRUE) {
-
-    experiment = "k15expb"
-    is_celcius = FALSE 
-
-    T_ref = 223.15   # [K] 
-    E_ref = (T_ref*cp)*1e-3   # [kJ kg-1]
-    
-    filename = paste0("test_",experiment,".nc")
-
+load_icetemp = function(filename)
+{
     dat = my.read.nc(filename)
+    dat$filename = filename 
     dat$time = dat$time*1e-3     # [a] => [ka]
-
+    #dat$dz   = dat$H_ice[1]/(length(dat$zeta)-1)                # [m] vertical grid resolution 
+    dat$dz   = round(mean(diff(dat$zeta_ac))*dat$H_ice[1],2)    # [m] vertical grid resolution, nominal if unevenly spaced
+    
     # Calculate melt rate [m/a w.e.]
     dat$bmb_we = dat$bmb*rho_ice/rho_w 
 
     # Adjust enthalpy for reference
     dat$enth = dat$enth*1e-3 - E_ref 
 
-    # Calculate enthalpy offline 
-    enth = convert_to_enthalpy(dat$T_ice,dat$omega,dat$T_pmp,dat$cp)
-    # enth = enth/rho_ice*1e-3 - E_ref 
-    enth = enth*1e-3 - E_ref 
-    
     if (! is_celcius) {
         # Convert to Celcius for plots 
         T0 = 273.15 
@@ -45,6 +35,35 @@ if (TRUE) {
         dat$T_srf   = dat$T_srf   - T0 
         dat$T_robin = dat$T_robin - T0     
     }
+
+    return(dat)
+}
+
+# Load data 
+if (TRUE) {
+
+    experiment = "k15expb"
+
+    # Load data from Exp. A
+    dat_k15expa = load_icetemp(paste0("test_k15expa.nc"))
+
+    k15expb_filenames = c(
+    "test_k15expb_cr0.10E+00_dz0.10E+02.nc",
+    "test_k15expb_cr0.10E+00_dz0.50E+00.nc",
+    "test_k15expb_cr0.10E-01_dz0.10E+02.nc",
+    "test_k15expb_cr0.10E-01_dz0.50E+00.nc",
+    "test_k15expb_cr0.10E-02_dz0.10E+02.nc",   # qref2
+    "test_k15expb_cr0.10E-02_dz0.50E+00.nc",   # qref1
+    "test_k15expb_cr0.10E-03_dz0.10E+02.nc",
+    "test_k15expb_cr0.10E-03_dz0.50E+00.nc") 
+
+    dats_k15expb = list() 
+    for (q in 1:length(k15expb_filenames)) {
+        dats_k15expb[[q]] = load_icetemp(k15expb_filenames[q])
+    }
+
+    qref1 = 6
+    qref2 = 5 
 
     # Read data for comparison 
     k15a   = read.table("data/Kleiner2015/Kleiner2015_EXPA_Fig2-IIIa-melt.txt",header=TRUE)
@@ -62,6 +81,8 @@ ptype = "png"
 
 # Plot comparison with Kleiner et al. (2015), Exp A
 if (TRUE & experiment == "k15expa") {
+
+    dat = dat_k15expa
 
     kb = 1 
 
@@ -138,14 +159,18 @@ if (TRUE & experiment == "k15expa") {
 # Plot comparison with Kleiner et al. (2015), Exp B
 if (TRUE & experiment == "k15expb") {
 
-    kt = length(dat$time) 
+    dat  = dats_k15expb[[qref1]] 
+    dat2 = dats_k15expb[[qref2]] 
+
+    kt  = length(dat$time) 
+    kt2 = length(dat2$time) 
 
     ylim = c(0,1)
     y.at = seq(0,1,by=0.1)
 
-    col = c("black","#d6604d")
-    lwd = c(2,2)
-    lty = c(1,2)
+    col = c("#ef8a62","black","#99d8c9")          # reddish color: "#d6604d"
+    lwd = c(4.0,2.0,1.5)
+    lty = c(1,1,1)
 
     myfigure(fldr,"k15expb",asp=2.3,pointsize=12,type=ptype)
     par(xaxs="i",yaxs="i",cex.axis=1.0)
@@ -153,7 +178,7 @@ if (TRUE & experiment == "k15expb") {
     par(mfrow=c(1,3))
 
     # Panel 1: Enthalpy #############################
-    par(plt=c(0.12,0.95,0.12,0.95))
+    par(plt=c(0.12,0.99,0.12,0.95))
     xlim = c(92,108)
     x.at = c(92,96,100,104,108)
     
@@ -166,10 +191,8 @@ if (TRUE & experiment == "k15expb") {
     # Kleiner et al. (2015) analytical solution from Fig. 4
     lines(k15b$enth,k15b$zeta,col=col[1],lwd=lwd[1],lty=lty[1])
 
-    lines(dat$enth[,kt],dat$zeta,col=col[2],lwd=lwd[2],lty=lty[2])
-
-    # Caculated offline...
-    lines(enth[,kt],dat$zeta,col=3,lwd=1,lty=1)
+    lines(dat$enth[,kt],dat$zeta,  col=col[2],lwd=lwd[2],lty=lty[2])
+    lines(dat2$enth[,kt2],dat2$zeta,col=col[3],lwd=lwd[3],lty=lty[3])
 
     box() 
 
@@ -187,12 +210,13 @@ if (TRUE & experiment == "k15expb") {
     # Kleiner et al. (2015) analytical solution from Fig. 4
     lines(k15b$T_ice,k15b$zeta,col=col[1],lwd=lwd[1],lty=lty[1])
 
-    lines(dat$T_ice[,kt],dat$zeta,col=col[2],lwd=lwd[2],lty=lty[2])
-
+    lines(dat$T_ice[,kt],dat$zeta,  col=col[2],lwd=lwd[2],lty=lty[2])
+    lines(dat2$T_ice[,kt2],dat2$zeta,col=col[3],lwd=lwd[3],lty=lty[3])
+    
     box() 
     
-    # Panel 2: omega #############################
-    par(plt=c(0.12,0.95,0.12,0.95))
+    # Panel 3: omega #############################
+    par(plt=c(0.08,0.95,0.12,0.95))
     xlim = c(-0.1,3)
     x.at = pretty(xlim,10)
     
@@ -206,9 +230,43 @@ if (TRUE & experiment == "k15expb") {
     lines(k15b$omega,k15b$zeta,col=col[1],lwd=lwd[1],lty=lty[1])
 
     lines(dat$omega[,kt]*100,dat$zeta,col=col[2],lwd=lwd[2],lty=lty[2])
+    lines(dat2$omega[,kt2],dat2$zeta,  col=col[3],lwd=lwd[3],lty=lty[3])
+    
+    legend("topright",bty="n",inset=0.01,col=col,lwd=lwd,lty=lty,c("Kleiner et al. (2015)","Yelmo dz=0.5m","Yelmo dz=10m"))
 
-    legend("topright",bty="n",inset=0.01,col=col,lwd=lwd,lty=lty,c("Kleiner et al. (2015)","Yelmo"))
+    box() 
+    
+    ## Panel 3 inset: H_cts ######
+    par(new=TRUE,plt=c(0.45,0.90,0.40,0.75),cex.axis=0.8)
+    xlim = c(0.8e-4,2e-1)
+    x.at = c(1e-4,1e-3,1e-2,1e-1)
+    ylim = c(15,40)
+    y.at = c(20,25,30,35)
 
+    plot(xlim,ylim,type="n",ann=FALSE,axes=FALSE,log="x")
+    rect(xlim[1],ylim[1],xlim[2],ylim[2],col="white",bg="white")
+    #abline(h=y.at,v=x.at,col="grey90",lty=1,lwd=0.5)
+    axis(1,at=x.at)
+    axis(2,at=y.at)
+    mtext(side=1,line=1.2,las=0,cex=0.5,"K0/Kc")
+    mtext(side=2,line=1.3,las=0,cex=0.5,"CTS height (m)")
+    
+    # Analytical solution (roughly)
+    abline(h=18.9,col=col[1],lwd=lwd[1],lty=lty[1])
+
+    for (q in 1:length(dats_k15expb)) {
+        tmp = dats_k15expb[[q]]
+        kt_now = length(tmp$time)
+        col_now = "grey80"
+        if (tmp$dz==0.5) col_now = col[2]
+        if (tmp$dz > 8)  col_now = col[3]
+        points(tmp$enth_cr,tmp$H_cts[kt_now],col=col_now,pch=20,cex=1.5)
+        
+    }
+    
+    points(dat$enth_cr,dat$H_cts[kt],col=col[2],pch=20,cex=1.4)
+    points(dat2$enth_cr,dat2$H_cts[kt2],col=col[3],pch=20,cex=1.4)
+    
     box() 
     
     graphics.off()
@@ -246,7 +304,7 @@ if (TRUE & experiment == "k15expb") {
     
     k  = which.min(abs(dat$zeta - 0.05))
     lines(dat$time,dat$enth[k,],col=col[2],lwd=lwd[2]*0.5,lty=lty[2])
-    text(xlim[2],103.8,pos=2,cex=0.6,"Values for zeta=0.05")
+    text(xlim[2],103.6,pos=2,cex=0.6,"Values for zeta=0.05")
 
     legend("bottomright",bty="n",inset=0.01,col=col,lwd=lwd,lty=lty,c("Kleiner et al. (2015)","Yelmo"))
 
