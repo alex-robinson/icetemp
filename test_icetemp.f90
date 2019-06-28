@@ -93,7 +93,7 @@ program test_icetemp
     omega_max       = 0.03          ! Maximum allowed water content (fraction)
     enth_cr         = 1e-3          ! Enthalpy solver: conductivity ratio kappa_water / kappa_ice 
 
-    use_hires       = .TRUE. 
+    use_hires       = .FALSE. 
     hires_fac       = 2.0 
 
     file1D          = "test_"//trim(experiment)//".nc" 
