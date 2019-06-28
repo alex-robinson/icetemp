@@ -403,7 +403,7 @@ contains
 
             ! Also set omega to constant value where ice is temperate just for some consistency 
             omega = 0.0 
-            where (T_ice .ge. T_pmp) omega = 0.01 
+!             where (T_ice .ge. T_pmp) omega = omega_max 
 
             ! Finally, get enthalpy too 
             call convert_to_enthalpy(enth,T_ice,omega,T_pmp,cp,L_ice)
@@ -789,7 +789,7 @@ contains
         return 
 
     end subroutine calc_dzeta_terms
-    
+
 end module ice_enthalpy
 
 
