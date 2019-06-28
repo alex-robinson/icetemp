@@ -22,10 +22,66 @@ module ice_column_interp
         real(prec), allocatable :: dzeta_b(:)     ! nz_aa [--] Solver discretization helper variable bk
     end type 
 
+    private
+    public :: ice_column_hires_type
+    public :: ice_column_hires_interptolo
+    public :: ice_column_hires_interptohi 
+    public :: ice_column_hires_init
 
 contains 
 
+    subroutine ice_column_hires_interptolo(enth,T_ice,omega,dat,zeta_aa,zeta_ac)
 
+        implicit none 
+
+        real(prec), intent(INOUT) :: enth(:)        ! nz_aa [J kg] Ice column enthalpy
+        real(prec), intent(INOUT) :: T_ice(:)       ! nz_aa [K] Ice column temperature
+        real(prec), intent(INOUT) :: omega(:)       ! nz_aa [-] Ice column water content fraction
+        type(ice_column_hires_type), intent(IN) :: dat 
+        real(prec), intent(IN) :: zeta_aa(:)        ! nz_aa [--] Vertical sigma coordinates (zeta==height), layer centered aa-nodes
+        real(prec), intent(IN) :: zeta_ac(:)        ! nz_ac [--] Vertical height axis temperature (0:1), layer edges ac-nodes
+        
+        
+        ! Perform linear interpolations to high resolution 
+        enth    = interp_linear_vec(dat%zeta_aa,dat%enth,   xout=zeta_aa)
+        T_ice   = interp_linear_vec(dat%zeta_aa,dat%T_ice,  xout=zeta_aa)
+        omega   = interp_linear_vec(dat%zeta_aa,dat%omega,  xout=zeta_aa)
+
+        return 
+
+    end subroutine ice_column_hires_interptolo
+
+    subroutine ice_column_hires_interptohi(dat,enth,T_ice,omega,T_pmp,cp,kt,advecxy,uz,Q_strn,zeta_aa,zeta_ac)
+
+        implicit none 
+
+        type(ice_column_hires_type), intent(INOUT) :: dat 
+        real(prec), intent(IN) :: enth(:)        ! nz_aa [J kg] Ice column enthalpy
+        real(prec), intent(IN) :: T_ice(:)       ! nz_aa [K] Ice column temperature
+        real(prec), intent(IN) :: omega(:)       ! nz_aa [-] Ice column water content fraction
+        real(prec), intent(IN) :: T_pmp(:)       ! nz_aa [K] Pressure melting point temp.
+        real(prec), intent(IN) :: cp(:)          ! nz_aa [J kg-1 K-1] Specific heat capacity
+        real(prec), intent(IN) :: kt(:)          ! nz_aa [J a-1 m-1 K-1] Heat conductivity 
+        real(prec), intent(IN) :: advecxy(:)     ! nz_aa [K a-1] Horizontal heat advection 
+        real(prec), intent(IN) :: uz(:)          ! nz_ac [m a-1] Vertical velocity 
+        real(prec), intent(IN) :: Q_strn(:)      ! nz_aa [J a-1 m-3] Internal strain heat production in ice
+        real(prec), intent(IN) :: zeta_aa(:)     ! nz_aa [--] Vertical sigma coordinates (zeta==height), layer centered aa-nodes
+        real(prec), intent(IN) :: zeta_ac(:)     ! nz_ac [--] Vertical height axis temperature (0:1), layer edges ac-nodes
+        
+        ! Perform linear interpolations to high resolution 
+        dat%enth    = interp_linear_vec(zeta_aa,enth,   xout=dat%zeta_aa)
+        dat%T_ice   = interp_linear_vec(zeta_aa,T_ice,  xout=dat%zeta_aa)
+        dat%omega   = interp_linear_vec(zeta_aa,omega,  xout=dat%zeta_aa)
+        dat%T_pmp   = interp_linear_vec(zeta_aa,T_pmp,  xout=dat%zeta_aa)
+        dat%cp      = interp_linear_vec(zeta_aa,cp,     xout=dat%zeta_aa)
+        dat%kt      = interp_linear_vec(zeta_aa,kt,     xout=dat%zeta_aa)
+        dat%advecxy = interp_linear_vec(zeta_aa,advecxy,xout=dat%zeta_aa)
+        dat%uz      = interp_linear_vec(zeta_ac,uz,     xout=dat%zeta_ac)
+        dat%Q_strn  = interp_linear_vec(zeta_aa,Q_strn, xout=dat%zeta_aa)
+        
+        return 
+
+    end subroutine ice_column_hires_interptohi
 
     subroutine ice_column_hires_init(dat,nz_aa,nz_ac,fac,zeta_scale,zeta_exp)
 
@@ -204,4 +260,78 @@ contains
 
     end subroutine ice_column_hires_dealloc
     
+
+    function interp_linear_vec(x,y,xout) result(yout)
+        ! Interpolate y from ordered x to ordered xout positions
+
+        implicit none 
+ 
+        real(prec), intent(IN) :: x(:), y(:)
+        real(prec), intent(IN) :: xout(:)
+        real(prec) :: yout(size(xout)) 
+        integer :: i, j, n, nout 
+
+        n    = size(x) 
+        nout = size(xout)
+
+!         write(*,*) minval(x), maxval(x), n, nout
+
+        do i = 1, nout 
+            if (xout(i) .lt. x(1)) then
+                yout(i) = y(1)
+!                 write(*,*) 1, xout(i)
+            else if (xout(i) .gt. x(n)) then
+                yout(i) = y(n)
+!                 write(*,*) 2, xout(i)
+            else
+                do j = 1, n 
+                    if (x(j) .ge. xout(i)) exit 
+                end do
+
+                if (j .eq. 1) then 
+                    yout(i) = y(1) 
+!                     write(*,*) 3, xout(i)
+                else if (j .eq. n+1) then 
+                    yout(i) = y(n)
+!                     write(*,*) 4, xout(i)
+                else 
+                    yout(i) = interp_linear_internal(x(j-1:j),y(j-1:j),xout(i))
+!                     write(*,*) 5, xout(i)
+                end if 
+            end if 
+        end do
+
+        return 
+
+      end function interp_linear_vec
+
+    ! ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    !   Subroutine :  interp_linear_internal
+    !   Author     :  Alex Robinson
+    !   Purpose    :  Interpolates for the y value at the desired x value, 
+    !                 given x and y values around the desired point.
+    ! ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    function interp_linear_internal(x,y,xout) result(yout)
+
+        implicit none
+
+        real(prec), intent(IN)  :: x(2), y(2), xout
+        real(prec) :: yout
+        real(prec) :: alph
+
+        if ( xout .lt. x(1) .or. xout .gt. x(2) ) then
+            write(*,*) "interp1: xout < x0 or xout > x1 !"
+            write(*,*) "xout = ",xout
+            write(*,*) "x0   = ",x(1)
+            write(*,*) "x1   = ",x(2)
+            stop
+        end if
+
+        alph = (xout - x(1)) / (x(2) - x(1))
+        yout = y(1) + alph*(y(2) - y(1))
+
+        return
+
+    end function interp_linear_internal 
+
 end module ice_column_interp 
