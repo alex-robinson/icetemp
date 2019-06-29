@@ -75,6 +75,9 @@ program test_icetemp
 
     real(prec)         :: T0_ref 
 
+    integer            :: narg 
+    character(len=12)  :: arg_nz, arg_cr 
+
     ! ===============================================================
     ! User options 
 
@@ -96,11 +99,21 @@ program test_icetemp
     use_hires       = .FALSE. 
     hires_fac       = 2.0 
 
-    file1D          = "test_"//trim(experiment)//".nc" 
+    file1D          = "output/test_"//trim(experiment)//".nc" 
     
+    ! Overwrite options for nz and enth_cr if available from arguments
+    narg = command_argument_count() 
+    if (narg .gt. 0) then 
+        call get_command_argument(1,arg_nz)
+        call get_command_argument(2,arg_cr)
+
+        read(arg_nz,*)  nz
+        read(arg_cr,*)  enth_cr
+    end if 
+
     if (trim(experiment) .eq. "k15expa" .or. trim(experiment) .eq. "k15expb") then 
         ! Use a more precise filename to specify cr value and dz
-        write(file1D,"(a,e8.2,a,e8.2,a)") "test_"//trim(experiment)//"_cr", enth_cr, "_dz", (200.0/(nz-2)), ".nc"
+        write(file1D,"(a,e8.2,a,e8.2,a)") "output/test_"//trim(experiment)//"_dz", (200.0/(nz-2)), "_cr", enth_cr, ".nc"
     end if 
 
     ! ===============================================================
@@ -233,12 +246,6 @@ program test_icetemp
                         ice1%H_ice,ice1%H_w,ice1%f_grnd,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b, &
                         enth_cr,omega_max,T0_ref,dt,enth_solver)
 
-!             ! Corrector step (cold only) - experimental
-!             call calc_enth_column(ice1%vec%enth,ice1%vec%T_ice,ice1%vec%omega,ice1%bmb,ice1%Q_ice_b,ice1%H_cts,ice1%vec%T_pmp, &
-!                     ice1%vec%cp,ice1%vec%kt,ice1%vec%advecxy,ice1%vec%uz,ice1%vec%Q_strn,ice1%Q_b,ice1%Q_geo,ice1%T_srf,ice1%T_shlf, &
-!                     ice1%H_ice,ice1%H_w,ice1%f_grnd,ice1%vec%zeta,ice1%vec%zeta_ac,ice1%vec%dzeta_a,ice1%vec%dzeta_b, &
-!                     enth_cr,omega_max,T0_ref,dt,enth_solver,cold=.TRUE.)
-            
             end if 
 
         else 

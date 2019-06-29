@@ -17,7 +17,7 @@ contains
 
     subroutine calc_enth_column(enth,T_ice,omega,bmb_grnd,Q_ice_b,H_cts,T_pmp,cp,kt,advecxy,uz, &
                                 Q_strn,Q_b,Q_geo,T_srf,T_shlf,H_ice,H_w,f_grnd,zeta_aa,zeta_ac, &
-                                dzeta_a,dzeta_b,cr,omega_max,T0,dt,solver,cold)
+                                dzeta_a,dzeta_b,cr,omega_max,T0,dt,solver)
         ! Thermodynamics solver for a given column of ice 
         ! Note zeta=height, k=1 base, k=nz surface 
         ! Note: nz = number of vertical boundaries (including zeta=0.0 and zeta=1.0), 
@@ -56,7 +56,6 @@ contains
         real(prec), intent(IN)    :: T0             ! [K or degreesCelcius] Reference melting temperature  
         real(prec), intent(IN)    :: dt             ! [a] Time step 
         character(len=*), intent(IN) :: solver      ! "enth" or "temp" 
-        logical,    intent(IN), optional :: cold    ! Only solve the cold part of the column (second step of two step method)
 
         ! Local variables 
         integer    :: k, nz_aa, nz_ac
@@ -82,8 +81,7 @@ contains
         real(prec), allocatable :: solution(:)  ! nz_aa
         real(prec) :: fac, fac_a, fac_b, uz_aa, dzeta, dz
         real(prec) :: kappa_a, kappa_b 
-        logical    :: use_enth 
-        logical    :: cold_only 
+        logical    :: use_enth  
 
         nz_aa = size(zeta_aa,1)
         nz_ac = size(zeta_ac,1)
@@ -102,21 +100,6 @@ contains
         use_enth = .TRUE. 
         if (trim(solver) .eq. "temp") use_enth = .FALSE. 
 
-        ! Determine if only the cold part of the column should be solved
-        ! (only available for the enthalpy solver)
-        cold_only = .FALSE. 
-        if (present(cold)) cold_only = cold 
-
-        if (cold_only .and. (.not. use_enth)) then 
-            write(*,*) "calc_enth_column:: Error: 'cold' corrector step can only be used with the 'enth' solver."
-            stop "Program terminated."
-        end if 
-
-        if (cold_only) then 
-            write(*,*) "calc_enth_column:: Error: 'cold' corrector step not yet operational."
-            stop 
-        end if 
-        
         ! Get geothermal heat flux in proper units 
         Q_geo_now = Q_geo*1e-3*sec_year   ! [mW m-2] => [J m-2 a-1]
 
@@ -184,12 +167,9 @@ contains
             if (T_ice(1) .lt. T_pmp(1) .or. H_w_predicted .lt. 0.0_prec) then   
                 ! Frozen at bed, or about to become frozen 
 
-                ! maintain balance of heat sources and sinks
-                ! (conductive flux, geothermal flux, and basal friction)
-
-                ! Note: (Q_b+Q_geo_now) is generally >= 0, since defined as positive up
-
-                ! calculate dzeta for the bottom layer between the basal boundary and the temperature point above
+                ! Calculate dzeta for the bottom layer between the basal boundary
+                ! (ac-node) and the centered (aa-node) temperature point above
+                ! Note: zeta_aa(1) == zeta_ac(1) == bottom boundary 
                 dzeta = zeta_aa(2) - zeta_aa(1)
 
                 ! backward Euler flux basal boundary condition
@@ -282,43 +262,6 @@ contains
         supd(nz_aa) = 0.0_prec
         rhs(nz_aa)  = min(T_srf,T0) * fac_enth(nz_aa)
 
-
-        ! =====================================================
-        ! cold-only check 
-        if (cold_only .and. count(T_ice .eq. T_pmp) .gt. 1) then 
-            ! Overwrite column choices to only solve for the cold part
-            ! of the column, if both temperate and cold zones exist
-
-            do k = 1, nz_aa-1
-
-                if (T_ice(k) .ge. T_pmp(k)) then 
-                    ! Temperate region, prescribe solution
-
-                    subd(k) = 0.0_prec
-                    diag(k) = 1.0_prec
-                    supd(k) = 0.0_prec
-                    rhs(k)  = var(k)
-                
-                else if (T_ice(k) .lt. T_pmp(k) .and. T_ice(k-1) .ge. T_pmp(k)) then 
-                    ! CTS layer, boundary cold condition: dE/dz = 0
-                    ! Note: this probably doesn't work properly now, since
-                    ! the bottom layer is no longer the boundary ac-node, but
-                    ! rather the aa-node one layer below. Re-derive.
-                    subd(k) =  0.0_prec
-                    diag(k) =  1.0_prec
-                    supd(k) = -1.0_prec
-                    rhs(k)  =  0.0_prec
-                    
-                end if 
-
-            end do 
-
-        end if 
-        ! End cold-only check 
-        ! =====================================================
-
-
-
         ! == Call solver ==
 
         call solve_tridiag(subd,diag,supd,rhs,solution)
@@ -331,7 +274,7 @@ contains
             ! recalculate enthalpy, temperature and water content 
             
             enth  = solution
-            
+
             ! Modify enthalpy at the base in the case that a temperate layer is present above the base
             ! (water content should increase towards the base)
             if (enth(2) .ge. T_pmp(2)*cp(2)) then 

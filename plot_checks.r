@@ -45,45 +45,46 @@ if (TRUE) {
     experiment = "k15expb"
 
     # Load data from Exp. A
-    dat_k15expa = load_icetemp(paste0("test_k15expa.nc"))
+    dat_k15expa = load_icetemp("output/test_k15expa_dz0.50E+01_cr0.10E-02.nc")
 
-    dz1 = 0.5  # m 
-    dz2 = 5.0  # m 
+    fnames = c(
+"output/test_k15expb_dz0.10E+01_cr0.10E+00.nc",
+"output/test_k15expb_dz0.10E+01_cr0.10E-01.nc",
+"output/test_k15expb_dz0.10E+01_cr0.10E-02.nc",
+"output/test_k15expb_dz0.10E+01_cr0.10E-03.nc",
+"output/test_k15expb_dz0.10E+02_cr0.10E+00.nc",
+"output/test_k15expb_dz0.10E+02_cr0.10E-01.nc",
+"output/test_k15expb_dz0.10E+02_cr0.10E-02.nc",
+"output/test_k15expb_dz0.10E+02_cr0.10E-03.nc",
+"output/test_k15expb_dz0.20E+01_cr0.10E+00.nc",
+"output/test_k15expb_dz0.20E+01_cr0.10E-01.nc",
+"output/test_k15expb_dz0.20E+01_cr0.10E-02.nc",
+"output/test_k15expb_dz0.20E+01_cr0.10E-03.nc",
+"output/test_k15expb_dz0.50E+00_cr0.10E+00.nc",
+"output/test_k15expb_dz0.50E+00_cr0.10E-01.nc",
+"output/test_k15expb_dz0.50E+00_cr0.10E-02.nc",
+"output/test_k15expb_dz0.50E+00_cr0.10E-03.nc",
+"output/test_k15expb_dz0.50E+01_cr0.10E+00.nc",
+"output/test_k15expb_dz0.50E+01_cr0.10E-01.nc",
+"output/test_k15expb_dz0.50E+01_cr0.10E-02.nc",
+"output/test_k15expb_dz0.50E+01_cr0.10E-03.nc")
 
-    if (dz2 == 10.0) {
-        # dz=0.5m and dz=10m
-        k15expb_filenames = c(
-        "test_k15expb_cr0.10E+00_dz0.10E+02.nc",
-        "test_k15expb_cr0.10E+00_dz0.50E+00.nc",
-        "test_k15expb_cr0.10E-01_dz0.10E+02.nc",
-        "test_k15expb_cr0.10E-01_dz0.50E+00.nc",
-        "test_k15expb_cr0.10E-02_dz0.10E+02.nc",   # qref2
-        "test_k15expb_cr0.10E-02_dz0.50E+00.nc",   # qref1
-        "test_k15expb_cr0.10E-03_dz0.10E+02.nc",
-        "test_k15expb_cr0.10E-03_dz0.50E+00.nc") 
-    } else if (dz2 == 5.0) {
-        # dz=0.5m and dz=5m
-        k15expb_filenames = c(
-        "test_k15expb_cr0.10E+00_dz0.50E+01.nc",
-        "test_k15expb_cr0.10E+00_dz0.50E+00.nc",
-        "test_k15expb_cr0.10E-01_dz0.50E+01.nc",
-        "test_k15expb_cr0.10E-01_dz0.50E+00.nc",
-        "test_k15expb_cr0.10E-02_dz0.50E+01.nc",   # qref2
-        "test_k15expb_cr0.10E-02_dz0.50E+00.nc",   # qref1
-        "test_k15expb_cr0.10E-03_dz0.50E+01.nc",
-        "test_k15expb_cr0.10E-03_dz0.50E+00.nc") 
-    } else {
-        # dz=0.5m and dz=1m
-        k15expb_filenames = c(
-        "test_k15expb_cr0.10E+00_dz0.10E+01.nc",
-        "test_k15expb_cr0.10E+00_dz0.50E+00.nc",
-        "test_k15expb_cr0.10E-01_dz0.10E+01.nc",
-        "test_k15expb_cr0.10E-01_dz0.50E+00.nc",
-        "test_k15expb_cr0.10E-02_dz0.10E+01.nc",   # qref2
-        "test_k15expb_cr0.10E-02_dz0.50E+00.nc",   # qref1
-        "test_k15expb_cr0.10E-03_dz0.10E+01.nc",
-        "test_k15expb_cr0.10E-03_dz0.50E+00.nc") 
-    }
+    k15expb_dz1.0  = fnames[c(1,2,3,4)]
+    k15expb_dz10.0 = fnames[c(5,6,7,8)]
+    k15expb_dz2.0  = fnames[c(9,10,11,12)]
+    k15expb_dz0.5  = fnames[c(13,14,15,16)]
+    k15expb_dz5.0  = fnames[c(17,18,19,20)]
+    
+    dz1 = 0.5   # m
+
+    dz2 = 2.0  # m 
+    k15expb_filenames = c(k15expb_dz0.5,k15expb_dz2.0)  # dz=0.5m, dz=10m
+
+    # dz2 = 5.0  # m 
+    # k15expb_filenames = c(k15expb_dz0.5,k15expb_dz5.0)  # dz=0.5m, dz=10m
+
+    # dz2 = 10.0  # m 
+    # k15expb_filenames = c(k15expb_dz0.5,k15expb_dz10.0)  # dz=0.5m, dz=10m
 
     n_expb = length(k15expb_filenames)
 
@@ -92,8 +93,8 @@ if (TRUE) {
         dats_k15expb[[q]] = load_icetemp(k15expb_filenames[q])
     }
 
-    qref1 = 6
-    qref2 = 5 
+    qref1 = 3
+    qref2 = 7 
 
     # Read data for comparison 
     k15a   = read.table("data/Kleiner2015/Kleiner2015_EXPA_Fig2-IIIa-melt.txt",header=TRUE)
